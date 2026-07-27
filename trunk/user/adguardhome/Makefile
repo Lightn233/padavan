@@ -23,10 +23,11 @@ endef
 
 define Build/Compile
 	(cd $(PKG_BUILD_DIR); \
-		GOOS=linux GOARCH=mipsle CGO_ENABLED=0 \
+		GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 \
 		go build -v -o AdGuardHome \
 		-trimpath -ldflags "$(LD_FLAGS) -s -w -buildid=" \
 		.; \
+        upx -9 AdGuardHome \
 	)
 endef
 

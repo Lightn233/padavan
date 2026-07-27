@@ -6,7 +6,7 @@ PKG_VERSION:=v0.108.0-b.89
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/AdguardTeam/AdGuardHome/archive/refs/tags/
 PKG_SOURCE_URL_FILE:=v$(PKG_VERSION).tar.gz
-PKG_HASH:=460788ab4f65db364ed4b595975456f8c4b7566b9a1989c8b15033c6e3d74971
+PKG_HASH:=4e5a1390395c8c89a4ce0758fcfc2fc29e51b5f120a5fc754042a39d5adabf1e
 
 include $(INCLUDE_DIR)/package.mk
 

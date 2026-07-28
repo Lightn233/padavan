@@ -26,8 +26,11 @@ clean:
 
 .PHONY: $(PRODUCTS)
 $(PRODUCTS):
+	@echo "Preparing product $@"
 	cp -f $(TEMPLATE_DIR)/$(@).config $(CONFIG)
 	@echo "CONFIG_CROSS_COMPILER_ROOT=$(TOPDIR)/toolchain/toolchain-mipsel" >> $(CONFIG)
 	@echo "CONFIG_TOOLCHAIN=$(TOOLCHAIN)" >> $(CONFIG)
 	@echo "CONFIG_CCACHE=y" >> $(CONFIG)
-	@make build
+	# Apply overrides (if any) and normalize .config
+	@./scripts/apply_overrides.sh $@ 
+	@$(MAKE) build

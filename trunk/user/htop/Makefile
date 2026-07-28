@@ -1,11 +1,11 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=htop
-PKG_VERSION:=3.2.2
+PKG_VERSION:=3.5.2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/htop-dev/htop/tar.gz/$(PKG_VERSION)?
-PKG_HASH:=3829c742a835a0426db41bb039d1b976420c21ec65e93b35cd9bfd2d57f44ac8
+PKG_HASH:=a66a62bbd1eba59889c68f868b643e53320eea93da19f43ba13c822a826d82ba
 
 PKG_FIXUP:=autoreconf
 

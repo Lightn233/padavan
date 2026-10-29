@@ -385,11 +385,11 @@ OVPN_Topo2=NAT (不同子网)
 OVPN_Prot=传输端口:
 OVPN_Port=端口:
 OVPN_Auth=认证类型:
-OVPN_COMPRESS=启用 LZx 数据压缩:
-OVPN_COMPRESS_Item1=否 (从服务器推送)
-OVPN_COMPRESS_Item2=是 (使用LZO压缩)
-OVPN_COMPRESS_Item3=是 (使用LZ4压缩)
-OVPN_COMPRESS_Item4=是 (使用LZ4-v2压缩)
+OVPN_COMPRESS=旧端压缩兼容:
+OVPN_COMPRESS_Item1=兼容封装（可接受服务器推送）
+OVPN_COMPRESS_Item2=仅接收旧端 LZO
+OVPN_COMPRESS_Item3=仅接收旧端 LZ4
+OVPN_COMPRESS_Item4=仅接收旧端 LZ4-v2
 OVPN_HMAC=HMAC 签名检查 (TLS-Auth/TLS-Crypt):
 OVPN_HMAC_Item1=TLS-Auth (需要 ta.key)
 OVPN_HMAC_Item2=TLS-Crypt (需要 ta.key)
@@ -1903,3 +1903,5 @@ Login=登录
 BTN_FREEMEMORY=清理内存
 
 
+
+OVPN_COMPAT_HINT=OpenVPN 2.7 不再压缩发送数据；这些选项仅用于接收旧端压缩数据。新连接建议关闭压缩。

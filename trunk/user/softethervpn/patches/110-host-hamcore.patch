@@ -1,0 +1,14 @@
+--- a/src/makefiles/linux_32bit.mak
++++ b/src/makefiles/linux_32bit.mak
+@@ -347,9 +347,9 @@
+ 	$(CC) $(OPTIONS_COMPILE_SHARED) -c src/Cedar/Wpc.c -o tmp/objs/Cedar/Wpc.o
+ 
+ # hamcore.se2 Archive File
+-src/bin/BuiltHamcoreFiles/unix/hamcore.se2: tmp/hamcorebuilder $(HAMCORE_FILES)
++src/bin/BuiltHamcoreFiles/unix/hamcore.se2: build_hamcore.py $(HAMCORE_FILES)
+ 	@mkdir -p src/bin/BuiltHamcoreFiles/unix/
+-	$(QEMU) tmp/hamcorebuilder src/bin/hamcore/ src/bin/BuiltHamcoreFiles/unix/hamcore.se2
++	python3 build_hamcore.py src/bin/hamcore/ src/bin/BuiltHamcoreFiles/unix/hamcore.se2
+ 
+ # hamcorebuilder Utility
+ tmp/hamcorebuilder: src/hamcorebuilder/hamcorebuilder.c $(HEADERS_MAYAQUA) $(HEADERS_CEDAR) $(OBJECTS_MAYAQUA) $(OBJECTS_CEDAR)

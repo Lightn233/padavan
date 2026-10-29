@@ -925,6 +925,7 @@ function getHash(){
                                             <option value="3" <% nvram_match_x("", "vpns_ov_compress", "3","selected"); %>><#OVPN_COMPRESS_Item3#></option>
                                             <option value="4" <% nvram_match_x("", "vpns_ov_compress", "4","selected"); %>><#OVPN_COMPRESS_Item4#></option>
                                         </select>
+                                        <span class="help-block"><#OVPN_COMPAT_HINT#></span>
                                     </td>
                                 </tr>
                                 <tr id="row_vpns_ov_atls" style="display:none" onchange="change_vpns_ov_atls();">

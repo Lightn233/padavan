@@ -1,0 +1,50 @@
+RM2100 VPN 组件升级与验证（2026-10-30）
+
+本次合入
+OpenVPN 2.5.9 升级为 2.7.8；新增静态依赖 libcap-ng 0.9.6、LZ4 1.10.0。
+SoftEther 4.29-9680 升级为 4.41-9787 稳定版；Readline 升级为 8.3，应用官方 001—006 补丁。
+保留 make RM2100 和其他机型选择方式。机型模板与插件默认开关保持原样。
+本次不包含尚未完成验证的 strongSwan 6.1.0、WireGuard tools 新版候选。
+
+兼容修复
+1. OpenVPN 保留原压缩选项编号，明确使用 allow-compression asym 接收旧端数据。
+   OpenVPN 2.7 不再压缩发送数据，页面新增说明；新连接建议关闭压缩。
+2. SoftEther 适配 OpenSSL 4 的公开 ASN.1 接口、证书时间转换及 PKCS#11 长度/句柄类型；
+   修正信号回调类型、TAP 释放声明和 Linux 控制台输入，不以关闭编译错误检查替代修复。
+3. SoftEther 改为统一下载、SHA-256 校验、补丁失败停止和构建标记机制。
+   Python 3 在构建机生成 hamcore，67 个资源及最终归档与官方工具逐字节相同；
+   不依赖开发者机器中的 QEMU 路径，不沿用旧版预打包资源或修改文件时间跳过构建。
+4. Readline 7 的旧补丁已核对为新版包含的修复并移除；处理 BUILD_DIR 同名变量冲突。
+
+已经完成的验证
+- 现有 MIPS 工具链 GCC 16.2.0、binutils 2.47、musl 1.2.6 编译通过。
+- OpenVPN：真实 Ubuntu 2.5.11 与目标 MIPS 2.7.8 互通，14 组通过。
+  覆盖服务端/客户端角色互换、TCP/UDP、IPv4/IPv6、LZO/LZ4/LZ4-v2/comp-lzo、
+  SHA-256 数据一致性、重连、密码认证及错误密码拒绝。
+  压缩验证使用旧端实际发送的数据及压缩/解压计数，不是仅验证选项可以解析。
+- OpenVPN 配置生成与旧编号、页面字典绑定共 20 项通过；这不是页面视觉验收。
+- SoftEther 最终配方程序：25 项隧道检查通过，包含双向 1 MiB TCP、双向 UDP、
+  IPv4/IPv6、错误密码与错误固定证书拒绝、正确凭据恢复及服务端/客户端重启重连。
+- 官方 4.29 Linux 程序实际生成旧配置；迁移为 4.41 MIPS 程序后，33 项检查通过。
+  保留服务器证书、用户、虚拟 HUB、桥接及客户端账号；没有用新版本生成的配置冒充迁移。
+- 目标 MIPS 证书边界与签名回归 18 项通过，包含 2038、2049、2050、2100 年等日期。
+- make RM2100 成功；从固件解出的程序和随包库再次完成同样的互通、隧道、迁移检查。
+
+验证环境与边界
+使用现有 Ubuntu 中与家庭网络隔离、无外网默认路由的网络命名空间。
+MIPS 程序通过 QEMU 用户模式运行，TUN/TAP 使用 Ubuntu 内核。
+以上不等于 RM2100 内核实机验证、长期稳定性或真实吞吐量验收。
+旧 OpenVPN 的实测比较组为 2.5.11，不保证所有 2.3/2.4 客户端和所有第三方配置。
+SoftEther 本轮测试原生 SSL-VPN 协议；不据此宣布其全部兼容协议或硬件令牌通过。
+没有验证物理 USB/PKCS#11 令牌、其他机型硬件或外部商用 VPN 服务商。
+本次没有刷机、重启路由器或修改现网上网、DNS、IPv6、AdGuardHome 配置。
+
+构建说明
+日常版沿用 make RM2100；默认不额外打开这些可选插件。
+需要构建 VPN 验证包时，在 hello/common.override 中明确设置以下四项为 y：
+CONFIG_FIRMWARE_INCLUDE_OPENVPN=y
+CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_SERVER=y
+CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CLIENT=y
+CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CMD=y
+构建验证包后恢复原覆盖配置。编译依赖包括 Python 3、autoconf、automake、libtool、pkg-config。
+保留已通过实机验证的日常版回退包；验证包包含额外 VPN 程序，体积大于日常版。

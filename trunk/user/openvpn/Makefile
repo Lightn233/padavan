@@ -1,64 +1,38 @@
-SRC_NAME=openvpn-2.5.9
-SRC_URL = https://github.com/OpenVPN/openvpn/archive/refs/tags/v2.5.9.tar.gz
+include $(ROOTDIR)/rules.mk
 
-CFLAGS += -fvisibility=hidden
+PKG_NAME:=openvpn
+PKG_VERSION:=2.7.8
+PKG_SOURCE:=openvpn-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://codeload.github.com/OpenVPN/openvpn/tar.gz
+PKG_SOURCE_URL_FILE:=refs/tags/v$(PKG_VERSION)
+PKG_HASH:=daf18f81040137fc4d3d843088954ae68f6c86c10d3860114078b9c256a3516f
 
-all: download_test extract_test config_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)
+include $(INCLUDE_DIR)/package.mk
 
-download_test:
-	( if [ ! -f $(SRC_NAME).tar.gz ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.gz $(SRC_URL); \
-	fi )
+define Build/Prepare
+	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
+	tar -xf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
+	$(Build/Patch)
+endef
 
-extract_test:
-	( if [ ! -d $(SRC_NAME) ]; then \
-		tar -xf $(SRC_NAME).tar.gz; \
-		patch -d $(SRC_NAME) -p1 < $(SRC_NAME).patch ; \
-	fi )
+define Build/Configure
+	cd $(PKG_BUILD_DIR) && autoreconf -fi
+	$(call Build/Configure/Default)
+endef
 
-config_test:
-	( if [ -f ./config_done ]; then \
-		echo "the same configuration"; \
-	else \
-		make configure && touch config_done; \
-	fi )
+EXTRA_CFLAGS += -fvisibility=hidden
+CONFIGURE_VARS += IFCONFIG=/sbin/ifconfig ROUTE=/sbin/route NETSTAT=/bin/netstat
 
-configure:
-	( cd $(SRC_NAME) ; \
-	autoreconf -fi ; \
-	IFCONFIG=/sbin/ifconfig \
-	ROUTE=/sbin/route \
-	NETSTAT=/bin/netstat \
-	./configure \
-		--prefix=/usr \
-		--disable-debug \
-		--disable-plugins \
-		--disable-pkcs11 \
-		--disable-ofb-cfb \
-		--disable-selinux \
-		--disable-systemd \
-		--disable-iproute2 \
-		--disable-unit-tests \
-		--disable-management \
-		--enable-small \
-		--enable-multihome \
-		--enable-pf \
-		--enable-fragment \
-		--enable-def-auth \
-		--enable-lzo \
-		--with-crypto-library=openssl \
-		--with-sysroot=$(STAGEDIR) \
-		--host=$(HOST_TARGET) \
-		--build=$(HOST_BUILD) ; \
-	)
+# 目标内核没有 DCO；保留现有 TUN、LZO 和 LZ4 兼容路径。
+CONFIGURE_ARGS += \
+	--disable-debug --disable-plugins --disable-pkcs11 \
+	--disable-selinux --disable-systemd --disable-dco --disable-iproute2 \
+	--disable-unit-tests --disable-management --disable-dns-updown-by-default \
+	--enable-small --with-crypto-library=openssl
 
-clean:
-	if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) distclean ; \
-	fi ; \
-	rm -f config_done
+$(eval $(call BuildPackage,openvpn))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
 
-romfs:
-	$(ROMFSINST) $(SRC_NAME)/src/openvpn/openvpn /usr/sbin/openvpn
+romfs: $(STAMP_BUILT)
+	$(ROMFSINST) $(PKG_BUILD_DIR)/src/openvpn/openvpn /usr/sbin/openvpn
 	$(ROMFSINST) /usr/bin/openvpn-cert.sh

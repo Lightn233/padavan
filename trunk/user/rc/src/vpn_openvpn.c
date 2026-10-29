@@ -304,6 +304,8 @@ openvpn_add_compress(FILE *fp, int compress_idx, int is_server_mode)
 		return;
 	}
 
+	/* 2.7 仅兼容接收旧端压缩数据，不再压缩发送数据。 */
+	fputs("allow-compression asym\n", fp);
 	fprintf(fp, "compress%s\n", alg_str);
 
 	if (is_server_mode)

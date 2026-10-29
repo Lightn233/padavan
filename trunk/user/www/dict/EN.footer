@@ -370,11 +370,11 @@ OVPN_Topo2=NAT (different subnets)
 OVPN_Prot=Transport:
 OVPN_Port=Port:
 OVPN_Auth=Authentication type:
-OVPN_COMPRESS=Enable LZx for Data Compression:
-OVPN_COMPRESS_Item1=No (but pull from server)
-OVPN_COMPRESS_Item2=Yes, compress LZO
-OVPN_COMPRESS_Item3=Yes, compress LZ4
-OVPN_COMPRESS_Item4=Yes, compress LZ4-v2
+OVPN_COMPRESS=Legacy compression compatibility:
+OVPN_COMPRESS_Item1=Framing compatibility (accept server push)
+OVPN_COMPRESS_Item2=Receive legacy LZO only
+OVPN_COMPRESS_Item3=Receive legacy LZ4 only
+OVPN_COMPRESS_Item4=Receive legacy LZ4-v2 only
 OVPN_HMAC=HMAC Signature Check (TLS-Auth/TLS-Crypt)?
 OVPN_HMAC_Item1=TLS-Auth (ta.key is required)
 OVPN_HMAC_Item2=TLS-Crypt (ta.key is required)
@@ -1857,3 +1857,5 @@ Login=Login
 BTN_FREEMEMORY=FreeMemory
 
 
+
+OVPN_COMPAT_HINT=OpenVPN 2.7 no longer compresses outgoing traffic. These options accept compressed traffic from legacy peers. Disable compression for new connections.

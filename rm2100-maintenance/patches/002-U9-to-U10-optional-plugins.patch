@@ -1,0 +1,3725 @@
+--- a/trunk/configs/boards/busybox-1.38.config
++++ b/trunk/configs/boards/busybox-1.38.config
+@@ -295,9 +295,9 @@
+ #
+ CONFIG_FEATURE_MD5_SHA1_SUM_CHECK=y
+ CONFIG_MKDIR=y
+-# CONFIG_MKFIFO is not set
++CONFIG_MKFIFO=y
+ CONFIG_MKNOD=y
+-# CONFIG_MKTEMP is not set
++CONFIG_MKTEMP=y
+ CONFIG_MV=y
+ CONFIG_NICE=y
+ # CONFIG_NL is not set
+@@ -308,7 +308,7 @@
+ # CONFIG_PRINTENV is not set
+ CONFIG_PRINTF=y
+ CONFIG_PWD=y
+-# CONFIG_READLINK is not set
++CONFIG_READLINK=y
+ # CONFIG_FEATURE_READLINK_FOLLOW is not set
+ # CONFIG_REALPATH is not set
+ CONFIG_RM=y
+@@ -340,7 +340,7 @@
+ CONFIG_TEST1=y
+ CONFIG_TEST2=y
+ # CONFIG_FEATURE_TEST_64 is not set
+-# CONFIG_TIMEOUT is not set
++CONFIG_TIMEOUT=y
+ CONFIG_TOUCH=y
+ CONFIG_FEATURE_TOUCH_SUSV3=y
+ CONFIG_TR=y
+--- a/trunk/configs/boards/busybox.config
++++ b/trunk/configs/boards/busybox.config
+@@ -256,7 +256,7 @@
+ CONFIG_MD5SUM=y
+ CONFIG_MKDIR=y
+ CONFIG_FEATURE_MKDIR_LONG_OPTIONS=y
+-# CONFIG_MKFIFO is not set
++CONFIG_MKFIFO=y
+ CONFIG_MKNOD=y
+ CONFIG_MV=y
+ CONFIG_FEATURE_MV_LONG_OPTIONS=y
+@@ -266,7 +266,7 @@
+ # CONFIG_PRINTENV is not set
+ CONFIG_PRINTF=y
+ CONFIG_PWD=y
+-# CONFIG_READLINK is not set
++CONFIG_READLINK=y
+ # CONFIG_FEATURE_READLINK_FOLLOW is not set
+ # CONFIG_REALPATH is not set
+ CONFIG_RM=y
+@@ -362,7 +362,7 @@
+ #
+ # Debian Utilities
+ #
+-# CONFIG_MKTEMP is not set
++CONFIG_MKTEMP=y
+ # CONFIG_PIPE_PROGRESS is not set
+ # CONFIG_RUN_PARTS is not set
+ # CONFIG_FEATURE_RUN_PARTS_LONG_OPTIONS is not set
+@@ -752,7 +752,7 @@
+ # CONFIG_SETSID is not set
+ CONFIG_STRINGS=y
+ CONFIG_TIME=y
+-# CONFIG_TIMEOUT is not set
++CONFIG_TIMEOUT=y
+ # CONFIG_TTYSIZE is not set
+ # CONFIG_VOLNAME is not set
+ # CONFIG_WATCHDOG is not set
+--- a/trunk/libs/libxml2/Makefile
++++ b/trunk/libs/libxml2/Makefile
+@@ -1,47 +1,20 @@
+ include $(ROOTDIR)/rules.mk
+ 
+ PKG_NAME:=libxml2
+-PKG_VERSION:=2.11.4
+-
+-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.xz
+-PKG_SOURCE_URL:=@GNOME/libxml2/$(basename $(PKG_VERSION))
+-PKG_HASH:=737e1d7f8ab3f139729ca13a2494fd17bf30ddb4b7a427cf336252cab57f57f7
++PKG_VERSION:=2.15.4
++PKG_SOURCE:=libxml2-$(PKG_VERSION).tar.xz
++PKG_SOURCE_URL:=https://download.gnome.org/sources/libxml2/2.15
++PKG_HASH:=98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821
++PKG_INSTALL:=1
+ 
+ include $(INCLUDE_DIR)/package.mk
+ 
+-CONFIGURE_ARGS += \
+-	--enable-static \
+-	--disable-shared \
+-	$(if $(CONFIG_IPV6),--enable-ipv6,--disable-ipv6) \
+-	--without-catalog \
+-	--without-debug \
+-	--without-docbook \
+-	--without-ftp \
+-	--without-http \
+-	--without-legacy \
+-	--without-lzma \
+-	--without-pattern \
+-	--without-push \
+-	--without-python \
+-	--without-readline \
+-	--without-regexps \
+-	--without-iconv \
+-	--without-iso8859x \
+-	--with-c14n \
+-	--with-html \
+-	--with-output \
+-	--with-reader \
+-	--with-sax1 \
+-	--with-schemas \
+-	--with-threads \
+-	--with-tree \
+-	--with-valid \
+-	--with-writer \
+-	--with-xinclude \
+-	--with-xpath \
+-	--with-xptr \
+-	--with-zlib=$(STAGING_DIR)
+-
++# 作为目标程序的静态依赖；保留 aria2 所需的推送式 XML 解析。
++CONFIGURE_ARGS += --enable-static --disable-shared --without-python \
++	--without-programs --without-debug --without-iconv --without-lzma
++EXTRA_CFLAGS += -ffunction-sections -fdata-sections
++EXTRA_LDFLAGS += -Wl,--gc-sections
+ $(eval $(call BuildPackage,libxml2))
++$(STAMP_PREPARED): Makefile
+ 
+ romfs:
+--- a/trunk/user/aria2/Makefile
++++ b/trunk/user/aria2/Makefile
+@@ -1,82 +1,51 @@
+-SRC_NAME=aria2-1.36.0
+-SRC_URL=https://github.com/aria2/aria2/releases/download/release-1.36.0/aria2-1.36.0.tar.xz
++include $(ROOTDIR)/rules.mk
+ 
+-SRC_ARIA_NG_NAME=AriaNg-1.3.6-AllInOne
+-SRC_ARIA_NG_URL=https://github.com/mayswind/AriaNg/releases/download/1.3.6/AriaNg-1.3.6-AllInOne.zip
++PKG_NAME:=aria2
++PKG_VERSION:=1.37.0
++PKG_SOURCE:=aria2-$(PKG_VERSION).tar.xz
++PKG_SOURCE_URL:=https://github.com/aria2/aria2/releases/download/release-$(PKG_VERSION)
++PKG_HASH:=60a420ad7085eb616cb6e2bdf0a7206d68ff3d37fb5a956dc44242eb2f79b66b
++ARIANG_VERSION:=1.3.15
++ARIANG_SOURCE:=AriaNg-$(ARIANG_VERSION)-AllInOne.zip
++ARIANG_HASH:=9918932af1ab0ae3924b938b1c5195b6491dacf15908ac0dc440fdba660ac280
+ 
+-CFLAGS  += -fvisibility=hidden
+-CXXFLAGS += -fvisibility-inlines-hidden
+-LDFLAGS += -static-libstdc++
++include $(INCLUDE_DIR)/package.mk
+ 
+-THISDIR = $(shell pwd)
++CONFIGURE_ARGS += --disable-nls --disable-xmltest --disable-libaria2 \
++	--without-libnettle --without-libgmp --without-libgcrypt --without-libexpat \
++	--without-libcares --without-sqlite3 --without-gnutls \
++	--with-libz --with-openssl --with-libxml2 --with-libiconv-prefix=$(STAGING_DIR)
++CONFIGURE_VARS += ZLIB_CFLAGS="-I$(STAGING_DIR)/include" ZLIB_LIBS="-L$(STAGING_DIR)/lib -lz" \
++	OPENSSL_CFLAGS="-I$(STAGING_DIR)/include" OPENSSL_LIBS="-L$(STAGING_DIR)/lib -lssl -lcrypto" \
++	LIBXML2_CFLAGS="-I$(STAGING_DIR)/include/libxml2" LIBXML2_LIBS="-L$(STAGING_DIR)/lib -lxml2 -lm"
++EXTRA_CFLAGS += -ffunction-sections -fdata-sections -fvisibility=hidden
++EXTRA_LDFLAGS += -static-libstdc++ -static-libgcc -Wl,--gc-sections -Wl,-rpath-link,$(STAGING_DIR)/lib
++$(eval $(call BuildPackage,aria2))
++$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
+ 
+-all: download_test extract_test config_test
+-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)
+ ifeq ($(CONFIG_FIRMWARE_INCLUDE_ARIA_WEB_CONTROL),y)
+-	( if [ ! -f $(THISDIR)/$(SRC_ARIA_NG_NAME).zip ]; then \
+-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_ARIA_NG_NAME).zip $(SRC_ARIA_NG_URL); \
+-	fi )
+-	( if [ ! -d $(THISDIR)/ariaweb ]; then \
+-		mkdir -p ariaweb; \
+-		unzip -qq $(SRC_ARIA_NG_NAME).zip -d ariaweb; \
+-	fi )
++define Download/ariang
++  FILE:=$(ARIANG_SOURCE)
++  URL:=https://github.com/mayswind/AriaNg/releases/download/$(ARIANG_VERSION)
++  HASH:=$(ARIANG_HASH)
++endef
++$(eval $(call Download,ariang))
++ARIANG_DIR:=$(BUILD_DIR)/AriaNg-$(ARIANG_VERSION)
++$(ARIANG_DIR)/.prepared: $(DL_DIR)/$(ARIANG_SOURCE) Makefile
++	printf '%s  %s\n' '$(ARIANG_HASH)' '$(DL_DIR)/$(ARIANG_SOURCE)' | sha256sum -c -
++	mkdir -p '$(ARIANG_DIR)'
++	unzip -o -q '$(DL_DIR)/$(ARIANG_SOURCE)' -d '$(ARIANG_DIR)'
++	test -s '$(ARIANG_DIR)/index.html'
++	touch '$@'
++all: $(ARIANG_DIR)/.prepared
++romfs: $(ARIANG_DIR)/.prepared
+ endif
+ 
+-download_test:
+-	( if [ ! -f $(SRC_NAME).tar.xz ]; then \
+-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.xz $(SRC_URL); \
+-	fi )
+-
+-extract_test:
+-	( if [ ! -d $(SRC_NAME) ]; then \
+-		tar xf $(SRC_NAME).tar.xz; \
+-		patch -d $(SRC_NAME) -p1 -i ../disable-doc-test.patch; \
+-	fi )
+-
+-config_test:
+-	( if [ -f ./config_done ]; then \
+-		echo "the same configuration"; \
+-	else \
+-		make configure && touch config_done; \
+-	fi )
+-
+-configure:
+-	( cd $(SRC_NAME) ; \
+-	./configure \
+-		--prefix=/usr \
+-		--disable-nls \
+-		--disable-xmltest \
+-		--without-libnettle \
+-		--without-libgmp \
+-		--without-libgcrypt \
+-		--without-libexpat \
+-		--without-libcares \
+-		--without-sqlite3 \
+-		--without-gnutls \
+-		--with-libz \
+-		--with-openssl \
+-		--with-libxml2 \
+-		--with-libiconv-prefix=$(STAGEDIR) \
+-		PKG_CONFIG_LIBDIR="$(STAGEDIR)/lib/pkgconfig" \
+-		ZLIB_CFLAGS="-I$(STAGEDIR)/include" \
+-		ZLIB_LIBS="-L$(STAGEDIR)/lib -lz" \
+-		OPENSSL_CFLAGS="-I$(STAGEDIR)/include" \
+-		OPENSSL_LIBS="-L$(STAGEDIR)/lib -lssl -lcrypto" \
+-		--host=$(HOST_TARGET) \
+-		--build=$(HOST_BUILD) ; \
+-	)
+-
+-clean:
+-	if [ -f $(SRC_NAME)/Makefile ] ; then \
+-		$(MAKE) -C $(SRC_NAME) distclean ; \
+-	fi ; \
+-	rm -rf ariaweb
+-	rm -f config_done
+-
+-romfs:
++romfs: $(STAMP_BUILT)
++	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/aria2c $(ROMFSDIR)/usr/bin/aria2c
++	$(INSTALL_BIN) ./aria.sh $(ROMFSDIR)/usr/bin/aria.sh
+ ifeq ($(CONFIG_FIRMWARE_INCLUDE_ARIA_WEB_CONTROL),y)
+-	cp -rf $(THISDIR)/ariaweb $(INSTALLDIR)/www
++	$(INSTALL_DIR) $(ROMFSDIR)/www/ariaweb
++	$(INSTALL_DATA) $(ARIANG_DIR)/index.html $(ROMFSDIR)/www/ariaweb/index.html
+ endif
+-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/src/aria2c /usr/bin/aria2c
+-	$(ROMFSINST) -p +x /usr/bin/aria.sh
+-
+--- a/trunk/user/aria2/aria.sh
++++ b/trunk/user/aria2/aria.sh
+@@ -12,6 +12,10 @@
+ SVC_NAME="Aria2"
+ SVC_PATH="/usr/bin/aria2c"
+ DIR_LINK="/mnt/aria"
++
++# 同一服务的启停串行执行；守护进程不继承锁文件描述符。
++exec 9>/var/run/aria2-service.lock || exit 1
++flock -x 9 || exit 1
+ 
+ func_start()
+ {
+@@ -48,14 +52,20 @@
+ 	[ -z "$aria_pport" ] && aria_pport="16888"
+ 
+ 	if [ ! -f "$FILE_CONF" ] ; then
++		# 新配置必须有认证；已有配置保留原样。
++		[ -n "$aria_pass" ] || { logger -t "$SVC_NAME" "后台密码为空，无法生成 RPC 密钥"; return 1; }
++		umask 077
+ 		[ ! -d "$DIR_DL1" ] && mkdir -p "$DIR_DL1"
+ 		chmod -R 777 "$DIR_DL1"
+-		cat > "$FILE_CONF" <<EOF
++		# 在目标盘完整写入后再替换，避免磁盘写入失败留下半份配置。
++		aria_tmp=$(mktemp "$DIR_CFG/.aria2.conf.XXXXXX") || return 1
++		if ! cat > "$aria_tmp" <<EOF
+ 
+ ### XML-RPC
+ rpc-listen-all=true
+ rpc-allow-origin-all=true
+-#rpc-secret=
++# RPC 密钥初始使用后台密码；可改成独立密钥，并在 AriaNg 中填写相同值。
++rpc-secret=$aria_pass
+ #rpc-user=$aria_user
+ #rpc-passwd=$aria_pass
+ 
+@@ -97,13 +107,20 @@
+ max-concurrent-downloads=3
+ max-connection-per-server=8
+ min-split-size=1M
+-check-certificate=false
++check-certificate=true
++ca-certificate=/etc/ssl/certs/ca-certificates.crt
+ 
+ ### Log
+ log=$DIR_CFG/aria2.log
+ log-level=notice
+ 
+ EOF
++		then
++			rm -f "$aria_tmp"
++			logger -t "$SVC_NAME" "写入默认配置失败，未启动服务"
++			return 1
++		fi
++		mv "$aria_tmp" "$FILE_CONF" || return 1
+ 	fi
+ 
+ 	# aria2 needed home dir
+@@ -126,7 +143,7 @@
+ 
+ 	start-stop-daemon -S -N $SVC_PRIORITY$svc_user -x $SVC_PATH -- \
+ 		-D --enable-rpc=true --conf-path="$FILE_CONF" --input-file="$FILE_LIST" --save-session="$FILE_LIST" \
+-		--rpc-listen-port="$aria_rport" --listen-port="$aria_pport" --dht-listen-port="$aria_pport" $SSL_OPT
++		--rpc-listen-port="$aria_rport" --listen-port="$aria_pport" --dht-listen-port="$aria_pport" $SSL_OPT 9>&-
+ 
+ 	if [ $? -eq 0 ] ; then
+ 		echo "[  OK  ]"
+@@ -159,7 +176,7 @@
+ 	aria_pid=`pidof aria2c`
+ 	if [ -n "$aria_pid" ] ; then
+ 		# force kill (hungup?)
+-		kill -9 "$aria_pid"
++		killall -KILL aria2c >/dev/null 2>&1
+ 		sleep 1
+ 		echo "[KILLED]"
+ 		logger -t "$SVC_NAME" "Cannot stop: Timeout reached! Force killed."
+@@ -173,7 +190,7 @@
+ 	aria_pid=`pidof aria2c`
+ 	if [ -n "$aria_pid" ] ; then
+ 		echo -n "Reload $SVC_NAME config:."
+-		kill -1 "$aria_pid"
++		killall -HUP aria2c >/dev/null 2>&1
+ 		echo "[  OK  ]"
+ 	else
+ 		echo "Error: $SVC_NAME is not started!"
+--- /dev/null
++++ b/trunk/user/aria2/patches/010-openssl4-opaque-asn1.patch
+@@ -0,0 +1,51 @@
++--- a/src/LibsslTLSSession.cc
+++++ b/src/LibsslTLSSession.cc
++@@ -266,10 +266,11 @@
++           if (!name) {
++             continue;
++           }
++-          size_t len = ASN1_STRING_length(altName->d.ia5);
++-          if (len == 0) {
+++          int rawLen = ASN1_STRING_length(altName->d.ia5);
+++          if (rawLen <= 0) {
++             continue;
++           }
+++          size_t len = static_cast<size_t>(rawLen);
++           if (name[len - 1] == '.') {
++             --len;
++             if (len == 0) {
++@@ -279,17 +280,22 @@
++           dnsNames.push_back(std::string(name, name + len));
++         }
++         else if (altName->type == GEN_IPADD) {
++-          const unsigned char* ipAddr = altName->d.iPAddress->data;
+++          const unsigned char* ipAddr = ASN1_STRING_get0_data(altName->d.iPAddress);
++           if (!ipAddr) {
++             continue;
++           }
++-          size_t len = altName->d.iPAddress->length;
+++          // 证书中的 IP 地址只接受完整的 IPv4 或 IPv6 字节串。
+++          int rawLen = ASN1_STRING_length(altName->d.iPAddress);
+++          if (rawLen != 4 && rawLen != 16) {
+++            continue;
+++          }
+++          size_t len = static_cast<size_t>(rawLen);
++           ipAddrs.push_back(
++               std::string(reinterpret_cast<const char*>(ipAddr), len));
++         }
++       }
++     }
++-    X509_NAME* subjectName = X509_get_subject_name(peerCert);
+++    auto* subjectName = X509_get_subject_name(peerCert);
++     if (!subjectName) {
++       handshakeErr = "could not get X509 name object from the certificate.";
++       return TLS_ERR_ERROR;
++@@ -301,7 +307,7 @@
++       if (lastpos == -1) {
++         break;
++       }
++-      X509_NAME_ENTRY* entry = X509_NAME_get_entry(subjectName, lastpos);
+++      auto* entry = X509_NAME_get_entry(subjectName, lastpos);
++       unsigned char* out;
++       int outlen = ASN1_STRING_to_UTF8(&out, X509_NAME_ENTRY_get_data(entry));
++       if (outlen < 0) {
+--- a/trunk/user/busybox/Makefile
++++ b/trunk/user/busybox/Makefile
+@@ -14,6 +14,9 @@
+ 
+ $(eval $(call BuildPackage,busybox))
+ 
++# 配置更新必须触发重新准备，防止旧构建标记遗漏新增命令。
++$(STAMP_PREPARED): $(SRC_DIR)/.config
++
+ romfs:
+ 	$(MAKE) -C $(PKG_BUILD_DIR) \
+ 		$(MAKE_FLAGS) \
+--- a/trunk/user/busybox/busybox-1.24.x/.config
++++ b/trunk/user/busybox/busybox-1.24.x/.config
+@@ -256,7 +256,7 @@
+ CONFIG_MD5SUM=y
+ CONFIG_MKDIR=y
+ CONFIG_FEATURE_MKDIR_LONG_OPTIONS=y
+-# CONFIG_MKFIFO is not set
++CONFIG_MKFIFO=y
+ CONFIG_MKNOD=y
+ CONFIG_MV=y
+ CONFIG_FEATURE_MV_LONG_OPTIONS=y
+@@ -266,7 +266,7 @@
+ # CONFIG_PRINTENV is not set
+ CONFIG_PRINTF=y
+ CONFIG_PWD=y
+-# CONFIG_READLINK is not set
++CONFIG_READLINK=y
+ # CONFIG_FEATURE_READLINK_FOLLOW is not set
+ # CONFIG_REALPATH is not set
+ CONFIG_RM=y
+@@ -362,7 +362,7 @@
+ #
+ # Debian Utilities
+ #
+-# CONFIG_MKTEMP is not set
++CONFIG_MKTEMP=y
+ # CONFIG_PIPE_PROGRESS is not set
+ # CONFIG_RUN_PARTS is not set
+ # CONFIG_FEATURE_RUN_PARTS_LONG_OPTIONS is not set
+@@ -752,7 +752,7 @@
+ # CONFIG_SETSID is not set
+ CONFIG_STRINGS=y
+ CONFIG_TIME=y
+-# CONFIG_TIMEOUT is not set
++CONFIG_TIMEOUT=y
+ # CONFIG_TTYSIZE is not set
+ # CONFIG_VOLNAME is not set
+ # CONFIG_WATCHDOG is not set
+--- a/trunk/user/busybox/busybox-1.38.0/.config
++++ b/trunk/user/busybox/busybox-1.38.0/.config
+@@ -295,9 +295,9 @@
+ #
+ CONFIG_FEATURE_MD5_SHA1_SUM_CHECK=y
+ CONFIG_MKDIR=y
+-# CONFIG_MKFIFO is not set
++CONFIG_MKFIFO=y
+ CONFIG_MKNOD=y
+-# CONFIG_MKTEMP is not set
++CONFIG_MKTEMP=y
+ CONFIG_MV=y
+ CONFIG_NICE=y
+ # CONFIG_NL is not set
+@@ -308,7 +308,7 @@
+ # CONFIG_PRINTENV is not set
+ CONFIG_PRINTF=y
+ CONFIG_PWD=y
+-# CONFIG_READLINK is not set
++CONFIG_READLINK=y
+ # CONFIG_FEATURE_READLINK_FOLLOW is not set
+ # CONFIG_REALPATH is not set
+ CONFIG_RM=y
+@@ -340,7 +340,7 @@
+ CONFIG_TEST1=y
+ CONFIG_TEST2=y
+ # CONFIG_FEATURE_TEST_64 is not set
+-# CONFIG_TIMEOUT is not set
++CONFIG_TIMEOUT=y
+ CONFIG_TOUCH=y
+ CONFIG_FEATURE_TOUCH_SUSV3=y
+ CONFIG_TR=y
+--- a/trunk/user/frp/Makefile
++++ b/trunk/user/frp/Makefile
+@@ -1,32 +1,35 @@
+-THISDIR := $(shell pwd)
+-FRP_VER := 0.48.0
+-FRP_URL_BASE := https://github.com/fatedier/frp/releases/download
++include $(ROOTDIR)/rules.mk
+ 
+-FRP_NAME := frp_$(FRP_VER)_linux_mipsle
+-FRP_URL := $(FRP_URL_BASE)/v$(FRP_VER)/$(FRP_NAME).tar.gz
++PKG_NAME:=frp
++PKG_VERSION:=0.71.1
++PKG_SOURCE:=frp_$(PKG_VERSION)_linux_mipsle.tar.gz
++PKG_SOURCE_URL:=https://github.com/fatedier/frp/releases/download/v$(PKG_VERSION)
++PKG_HASH:=2eaa97e6b42a0cbd672b079b59d5682bb64a766f9a9564d7c4bbbd3ca79ec694
+ 
+-all: download_test extra_test
+-	@echo "frp build done!"
++include $(INCLUDE_DIR)/package.mk
+ 
+-download_test:
+-	( if [ ! -f $(FRP_NAME).tar.gz ]; then \
+-		wget -t5 --timeout=20 --no-check-certificate -O $(FRP_NAME).tar.gz $(FRP_URL); \
+-	fi )
++# 官方 MIPS 小端软浮点程序；下载、解包、安装依赖有序且核验摘要。
++define Build/Prepare
++	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
++	tar -xzf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
++endef
++define Build/Configure
++endef
++define Build/Compile
++	test -x '$(PKG_BUILD_DIR)/frpc' -a -x '$(PKG_BUILD_DIR)/frps'
++endef
++$(eval $(call BuildPackage,frp))
++$(STAMP_PREPARED): Makefile
+ 
+-extra_test:
+-	( if [ ! -d $(FRP_NAME) ]; then \
+-		tar xf $(FRP_NAME).tar.gz; \
+-	fi )
+-
+-clean:
+-	#rm -rf $(FRP_NAME).tar.gz $(FRP_NAME)
+-
+-romfs:
++romfs: $(STAMP_BUILT)
++	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin $(ROMFSDIR)/etc_ro
+ ifeq ($(CONFIG_FIRMWARE_INCLUDE_FRPC),y)
+-	$(ROMFSINST) -p +x $(THISDIR)/$(FRP_NAME)/frpc /usr/bin/frpc
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/frpc $(ROMFSDIR)/usr/bin/frpc
+ endif
+ ifeq ($(CONFIG_FIRMWARE_INCLUDE_FRPS),y)
+-	$(ROMFSINST) -p +x $(THISDIR)/$(FRP_NAME)/frps /usr/bin/frps
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/frps $(ROMFSDIR)/usr/bin/frps
+ endif
+-	$(ROMFSINST) -p +x $(THISDIR)/frp.sh /usr/bin/frp.sh
+-	$(ROMFSINST) /etc_ro/frp_script.sh
++	$(INSTALL_BIN) ./frp.sh $(ROMFSDIR)/usr/bin/frp.sh
++	$(INSTALL_BIN) ./frp_script.sh $(ROMFSDIR)/etc_ro/frp_script.sh
++	$(INSTALL_CONF) ./frpc.toml.example $(ROMFSDIR)/etc_ro/frpc.toml.example
++	$(INSTALL_CONF) ./frps.toml.example $(ROMFSDIR)/etc_ro/frps.toml.example
+--- a/trunk/user/frp/frp.sh
++++ b/trunk/user/frp/frp.sh
+@@ -1,72 +1,82 @@
+ #!/bin/sh
+-frpc_enable=`nvram get frpc_enable`
+-frps_enable=`nvram get frps_enable`
+-http_username=`nvram get http_username`
++# 启停与配置开关分离；保留用户脚本，只维护本服务的定时任务。
++frpc_enable=$(nvram get frpc_enable)
++frps_enable=$(nvram get frps_enable)
++http_username=$(nvram get http_username)
++storage=/etc/storage
++runtime=/var/run
+ 
+-check_frp () 
+-{
+-	check_net
+-	result_net=$?
+-	if [ "$result_net" = "1" ] ;then
+-		if [ -z "`pidof frpc`" ] && [ "$frpc_enable" = "1" ];then
+-			frp_start
+-		fi
+-		if [ -z "`pidof frps`" ] && [ "$frps_enable" = "1" ];then
+-			frp_start
+-		fi
+-	fi
++case "$http_username" in ''|.|..|*[!a-zA-Z0-9_.-]*)
++    logger -t frp "管理用户名无效，未修改定时任务"; exit 1;;
++esac
++mkdir -p "$runtime" || exit 1
++exec 9>"$runtime/frp.lock"
++flock -w 5 9 || exit 1
++
++cron_update() {
++    mkdir -p "$storage/cron/crontabs" || return 1
++    cron="$storage/cron/crontabs/$http_username"
++    [ -f "$cron" ] || : > "$cron"
++    # 仅移除旧版和当前版本的完整守护命令，不按 frp 关键词删行。
++    awk '!($6 == "/bin/sh" && $7 == "/usr/bin/frp.sh" && $8 == "C") &&
++         !($6 == "/usr/bin/frp.sh" && $7 == "C")' "$cron" > "$cron.frp.$$" || return 1
++    if [ "$1" = add ]; then
++        printf '%s\n' '*/1 * * * * /bin/sh /usr/bin/frp.sh C >/dev/null 2>&1' >> "$cron.frp.$$"
++    fi
++    chmod 600 "$cron.frp.$$"
++    mv -f "$cron.frp.$$" "$cron"
+ }
+ 
+-check_net() 
+-{
+-	/bin/ping -c 3 223.5.5.5 -w 5 >/dev/null 2>&1
+-	if [ "$?" == "0" ]; then
+-		return 1
+-	else
+-		return 2
+-		logger -t "frp" "检测到互联网未能成功访问,稍后再尝试启动frp"
+-	fi
++stop_process() {
++    pidof "$1" >/dev/null 2>&1 || return 0
++    killall -TERM "$1" >/dev/null 2>&1
++    count=0
++    while pidof "$1" >/dev/null 2>&1 && [ "$count" -lt 5 ]; do
++        sleep 1; count=$((count + 1))
++    done
++    pidof "$1" >/dev/null 2>&1 && killall -KILL "$1" >/dev/null 2>&1
++    return 0
+ }
+ 
+-frp_start () 
+-{
+-	/etc/storage/frp_script.sh
+-	sed -i '/frp/d' /etc/storage/cron/crontabs/$http_username
+-	cat >> /etc/storage/cron/crontabs/$http_username << EOF
+-*/1 * * * * /bin/sh /usr/bin/frp.sh C >/dev/null 2>&1
+-EOF
+-	[ ! -z "`pidof frpc`" ] && logger -t "frp" "frpc启动成功"
+-	[ ! -z "`pidof frps`" ] && logger -t "frp" "frps启动成功"
++frp_stop() {
++    cron_update del || return 1
++    # stop 必须真正停止，不能依赖网页已先把启用开关改成零。
++    stop_process frpc
++    stop_process frps
+ }
+ 
+-frp_close () 
+-{
+-	if [ "$frpc_enable" = "0" ]; then
+-		if [ ! -z "`pidof frpc`" ]; then
+-		killall -9 frpc frp_script.sh
+-		[ -z "`pidof frpc`" ] && logger -t "frp" "已停止 frpc"
+-	    fi
+-	fi
+-	if [ "$frps_enable" = "0" ]; then
+-		if [ ! -z "`pidof frps`" ]; then
+-		killall -9 frps frp_script.sh
+-		[ -z "`pidof frps`" ] && logger -t "frp" "已停止 frps"
+-	    fi
+-	fi
+-	if [ "$frpc_enable" = "0" ] && [ "$frps_enable" = "0" ]; then
+-	sed -i '/frp/d' /etc/storage/cron/crontabs/$http_username
++frp_start() {
++    if [ "$frpc_enable" != 1 ] && [ "$frps_enable" != 1 ]; then
++        frp_stop
++        return
+     fi
++    [ -r "$storage/frp_script.sh" ] || {
++        logger -t frp "缺少启动配置脚本"; return 1;
++    }
++    # 用户脚本也有执行时限；后台服务不能继承本次启停锁。
++    (exec 9>&-; timeout 20 /bin/sh "$storage/frp_script.sh") || {
++        logger -t frp "启动脚本失败或超过 20 秒，请检查配置"; return 1;
++    }
++    cron_update add || return 1
++    failed=0
++    for name in frpc frps; do
++        case "$name" in frpc) enabled=$frpc_enable;; frps) enabled=$frps_enable;; esac
++        if [ "$enabled" = 1 ] && ! pidof "$name" >/dev/null 2>&1; then
++            logger -t frp "$name 未运行，请检查配置和日志"; failed=1
++        fi
++    done
++    return "$failed"
+ }
+ 
+-
+-case $1 in
+-start)
+-	frp_start
+-	;;
+-stop)
+-	frp_close
+-	;;
+-C)
+-	check_frp
+-	;;
++case "$1" in
++    start) frp_start;;
++    stop) frp_stop;;
++    restart) frp_stop && frp_start;;
++    C)
++        # 连接远端失败时由 FRP 自身重连；不要求外网必须回应 ICMP。
++        if { [ "$frpc_enable" = 1 ] && ! pidof frpc >/dev/null 2>&1; } ||
++           { [ "$frps_enable" = 1 ] && ! pidof frps >/dev/null 2>&1; }; then
++            frp_start
++        fi;;
++    *) echo "用法：$0 start|stop|restart|C" >&2; exit 2;;
+ esac
+--- a/trunk/user/frp/frp_script.sh
++++ b/trunk/user/frp/frp_script.sh
+@@ -1,59 +1,22 @@
+-#!/bin/sh
+-#from hiboy
+-killall frpc frps
+-mkdir -p /tmp/frp
+-#启动frp功能后会运行以下脚本
+-#frp项目地址教程: https://github.com/fatedier/frp/blob/master/README_zh.md
+-#请自行修改 token 用于对客户端连接进行身份验证
+-# IP查询： http://119.29.29.29/d?dn=github.com
+-
+-cat > "/tmp/frp/myfrpc.ini" <<-\EOF
+-# ==========客户端配置：==========
+-[common]
+-server_addr = 1192.0.0.3
+-server_port = 7000
+-token = 12345
+-
+-#log_file = /dev/null
+-#log_level = info
+-#log_max_days = 3
+-
+-[web]
+-remote_port = 6000
+-type = http
+-local_ip = 192.168.2.1
+-local_port = 80
+-subdomain = test
+-#host_header_rewrite = 实际你内网访问的域名，可以供公网的域名不一致，如果一致可以不写
+-# ====================
+-EOF
+-
+-#请手动配置【外部网络 (WAN) - 端口转发 (UPnP)】开启 WAN 外网端口
+-cat > "/tmp/frp/myfrps.ini" <<-\EOF
+-# ==========服务端配置：==========
+-[common]
+-bind_port = 7000
+-dashboard_port = 7500
+-# dashboard 用户名密码，默认都为 admin
+-dashboard_user = admin
+-dashboard_pwd = admin
+-vhost_http_port = 88
+-token = 12345
+-subdomain_host = frps.com
+-max_pool_count = 50
+-#log_file = /dev/null
+-#log_level = info
+-#log_max_days = 3
+-# ====================
+-EOF
+-
+-#启动：
+-frpc_enable=`nvram get frpc_enable`
+-frps_enable=`nvram get frps_enable`
+-if [ "$frpc_enable" = "1" ] ; then
+-    frpc -c /tmp/frp/myfrpc.ini 2>&1 &
+-fi
+-if [ "$frps_enable" = "1" ] ; then
+-    frps -c /tmp/frp/myfrps.ini 2>&1 &
+-fi
+- 
+\ No newline at end of file
++#!/bin/sh
++# 此文件仅作为首次启用的默认模板，不覆盖 /etc/storage 中已有的用户脚本。
++# 新配置保存为 /etc/storage/frp/frpc.toml、frps.toml；旧自定义 INI 脚本仍可使用。
++umask 077
++mkdir -p /etc/storage/frp /tmp/frp || exit 1
++failed=0
++for name in frpc frps; do
++    [ "$(nvram get "${name}_enable")" = 1 ] || continue
++    config="/etc/storage/frp/$name.toml"
++    if [ ! -s "$config" ]; then
++        logger -t frp "请先填写 $config，参考 /etc_ro/$name.toml.example"
++        failed=1; continue
++    fi
++    "$name" verify -c "$config" >/dev/null 2>&1 || {
++        logger -t frp "$name 配置校验失败，保留正在运行的进程"
++        failed=1; continue
++    }
++    pidof "$name" >/dev/null 2>&1 && continue
++    "$name" -c "$config" >/dev/null 2>&1 &
++done
++sleep 1
++exit "$failed"
+--- /dev/null
++++ b/trunk/user/frp/frpc.toml.example
+@@ -0,0 +1,16 @@
++# 示例地址不能用于真实连接；请填写自己的服务端地址及与服务端一致的令牌。
++serverAddr = "192.0.2.1"
++serverPort = 7000
++auth.method = "token"
++auth.token = "请填写独立的连接令牌"
++log.to = "/tmp/frp/frpc.log"
++log.level = "warn"
++log.maxDays = 1
++
++# 仅示例转发本机 HTTP，按实际用途调整，默认不会自动启用此示例文件。
++[[proxies]]
++name = "web"
++type = "tcp"
++localIP = "127.0.0.1"
++localPort = 80
++remotePort = 6000
+--- /dev/null
++++ b/trunk/user/frp/frps.toml.example
+@@ -0,0 +1,9 @@
++# 按实际需要设置监听地址、端口和令牌；防火墙由用户明确配置。
++bindAddr = "0.0.0.0"
++bindPort = 7000
++auth.method = "token"
++auth.token = "请填写独立的连接令牌"
++log.to = "/tmp/frp/frps.log"
++log.level = "warn"
++log.maxDays = 1
++# 默认不开启管理面板；如需开启，请限定管理网段并设置独立密码。
+--- a/trunk/user/rc/src/services_ex.c
++++ b/trunk/user/rc/src/services_ex.c
+@@ -563,7 +563,7 @@
+ 	if (!(fp = fopen(SAMBA_CONF, "w")))
+ 		return NULL;
+ 
+-	p_res_order = "lmhosts hosts bcast";
++	p_res_order = "lmhosts host bcast";
+ 
+ 	fprintf(fp, "[global]\n");
+ 	if (strlen(p_workgroup) > 0)
+@@ -590,7 +590,7 @@
+ 			char *wins = nvram_safe_get("dhcp_wins_x");
+ 			if (is_valid_ipv4(wins)) {
+ 				fprintf(fp, "wins server = %s\n", wins);
+-				p_res_order = "lmhosts wins hosts bcast";
++				p_res_order = "lmhosts wins host bcast";
+ 			}
+ 		}
+ 	}
+@@ -601,20 +601,17 @@
+ 	fprintf(fp, "max log size = 5\n");
+ 	fprintf(fp, "socket options = TCP_NODELAY SO_KEEPALIVE\n");
+ 	fprintf(fp, "unix charset = UTF8\n");
+-	fprintf(fp, "display charset = UTF8\n");
+ 	fprintf(fp, "bind interfaces only = %s\n", "yes");
+-	fprintf(fp, "interfaces = %s\n", IFNAME_BR);
+-	fprintf(fp, "unix extensions = no\n");			// fix for MAC users (thanks to 'mark2qualis')
+-	fprintf(fp, "encrypt passwords = yes\n");
+-	fprintf(fp, "pam password change = no\n");
+-	fprintf(fp, "obey pam restrictions = no\n");
++	/* WINS 自注册需要回环地址，监听范围仍限定在 LAN 与本机。 */
++	fprintf(fp, "interfaces = %s lo\n", IFNAME_BR);
+ 	fprintf(fp, "host msdfs = no\n");
+ 	fprintf(fp, "disable spoolss = yes\n");
+ #if defined (APP_SMBD36)
+-	fprintf(fp, "max protocol = SMB2\n");
++	/* 保持 SMB2 兼容，并允许新版客户端协商 SMB3。 */
++	fprintf(fp, "server min protocol = SMB2_02\n");
++	fprintf(fp, "server max protocol = SMB3\n");
+ 	fprintf(fp, "passdb backend = smbpasswd\n");
+ 	fprintf(fp, "security = USER\n");
+-	fprintf(fp, "username level = 8\n");
+ #endif
+ 	return fp;
+ }
+@@ -634,7 +631,8 @@
+ 	if (nvram_match("wins_enable", "0"))
+ 		return;
+ 
+-	mkdir_if_none("/etc/samba", "777");
++	mkdir_if_none("/etc/samba", "700");
++	chmod("/etc/samba", 0700);
+ 
+ 	fp = write_smb_conf_header();
+ 	if (fp)
+--- a/trunk/user/rc/src/services_stor.c
++++ b/trunk/user/rc/src/services_stor.c
+@@ -261,16 +261,13 @@
+ 	if (i_maxuser > MAX_CLIENTS_NUM) i_maxuser = MAX_CLIENTS_NUM;
+ 
+ 	fprintf(fp, "max connections = %d\n", i_maxuser);
+-	fprintf(fp, "use spnego = no\n");		// ASUS add
+-	fprintf(fp, "client use spnego = no\n");	// ASUS add
+ 	fprintf(fp, "null passwords = yes\n");		// ASUS add
+ 	fprintf(fp, "strict allocate = no\n");		// ASUS add
+ 	fprintf(fp, "use sendfile = yes\n");
+ 	fprintf(fp, "dos filemode = yes\n");
+ 	fprintf(fp, "dos filetimes = yes\n");
+-	fprintf(fp, "dos filetime resolution = yes\n");
+ 	fprintf(fp, "access based share enum = yes\n");
+-	fprintf(fp, "veto files = /Thumbs.db/.DS_Store/._*/.apdisk/.TemporaryItems/");
++	fprintf(fp, "veto files = /Thumbs.db/.DS_Store/._*/.apdisk/.TemporaryItems/\n");
+ 	fprintf(fp, "delete veto files = yes\n");
+ 	fprintf(fp, "\n");
+ 
+@@ -504,7 +501,9 @@
+ {
+ 	char* svcs[] = { "smbd",
+ #if defined (APP_SMBD36)
+-	"wsdd2" ,
++	"wsdd2", "samba-dcerpcd", "samba-bgqd",
++	"rpcd_classic", "rpcd_lsad", "rpcd_epmapper", "rpcd_mdssvc",
++	"rpcd_winreg", "rpcd_fsrvp", "rpcd_spoolss",
+ #endif
+ 	 "nmbd", NULL };
+ 
+@@ -527,14 +526,14 @@
+ {
+ 	int sh_num, has_nmbd, has_smbd, i;
+ 	char tmpuser[40], tmp2[40];
+-	char cmd[256];
+ 
+ 	if (nvram_match("enable_samba", "0") || nvram_match("st_samba_mode", "0"))
+ 		return;
+ 
+ 	recreate_passwd_unix(0);
+ 
+-	mkdir_if_none("/etc/samba", "777");
++	mkdir_if_none("/etc/samba", "700");
++	chmod("/etc/samba", 0700);
+ 
+ 	has_smbd = pids("smbd");
+ 	has_nmbd = pids("nmbd");
+@@ -550,8 +549,9 @@
+ 	for (i = 0; i < sh_num; i++) {
+ 		snprintf(tmpuser, sizeof(tmpuser), "acc_username%d", i);
+ 		snprintf(tmp2, sizeof(tmp2), "acc_password%d", i);
+-		snprintf(cmd, sizeof(cmd), "smbpasswd %s %s", nvram_safe_get(tmpuser), nvram_safe_get(tmp2));
+-		system(cmd);
++		/* 分开传递参数，密码中的空格与特殊字符不再交给 shell 解释。 */
++		if (eval("smbpasswd", nvram_safe_get(tmpuser), nvram_safe_get(tmp2)) != 0)
++			logmessage("Samba Server", "共享账户创建失败");
+ 	}
+ 
+ 	config_smb_fastpath(0);
+--- a/trunk/user/samba36/Makefile
++++ b/trunk/user/samba36/Makefile
+@@ -1,132 +1,64 @@
+-SRC_DIR := samba-3.6.25
+-SRC_NAME := $(SRC_DIR)/source3
+-THISDIR := $(shell pwd)
++include $(ROOTDIR)/rules.mk
+ 
+-SMBCFLAGS := $(CFLAGS)
+-SMBLDFLAGS := $(LDFLAGS)
+-SMBCPPFLAGS := -DNDEBUG -DSHMEM_SIZE=524288 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1 -D_LARGEFILE64_SOURCE=1 -D_LARGE_FILES=1
+-MAKE_FLAGS := $(MAKEFLAGS) DYNEXP= PICFLAG= MODULES=
++# 保留原 samba36 构建入口，内部升级为受维护的 Samba 4。
++PKG_NAME:=samba4-suite
++PKG_VERSION:=4.25.1
++PKG_SOURCE:=samba-$(PKG_VERSION).tar.gz
++PKG_SOURCE_URL:=https://download.samba.org/pub/samba/stable
++PKG_HASH:=7f367545bca69aa96897628f82f0f04d4b66b3bcb36cb978b9bb952c4b4c428d
++PKG_INSTALL:=1
++PKG_INSTALL_DIR=$(PKG_BUILD_DIR)/install
+ 
+-ifeq ($(CONFIG_FIRMWARE_INCLUDE_SMBD_SYSLOG),y)
+-SMBCFLAGS += -DMAX_DEBUG_LEVEL="0"
+-else
+-SMBCFLAGS += -DMAX_DEBUG_LEVEL="-1"
+-endif
++include $(INCLUDE_DIR)/package.mk
+ 
+-all: config_test
+-	MAKEFLAGS="$(MAKE_FLAGS)" $(MAKE) -C $(SRC_NAME) basics
+-	MAKEFLAGS="$(MAKE_FLAGS)" $(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)
++define Download/gmp
++  FILE:=gmp-6.3.0.tar.gz
++  URL:=https://ftp.gnu.org/gnu/gmp
++  HASH:=e56fd59d76810932a0555aa15a14b61c16bed66110d3c75cc2ac49ddaa9ab24c
++endef
++define Download/nettle
++  FILE:=nettle-3.10.2.tar.gz
++  URL:=https://ftp.gnu.org/gnu/nettle
++  HASH:=fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5
++endef
++define Download/tasn1
++  FILE:=libtasn1-4.21.0.tar.gz
++  URL:=https://ftp.gnu.org/gnu/libtasn1
++  HASH:=1d8a444a223cc5464240777346e125de51d8e6abf0b8bac742ac84609167dc87
++endef
++define Download/gnutls
++  FILE:=gnutls-3.8.12.tar.xz
++  URL:=https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8
++  HASH:=a7b341421bfd459acf7a374ca4af3b9e06608dcd7bd792b2bf470bea012b8e51
++endef
++$(eval $(call Download,gmp))
++$(eval $(call Download,nettle))
++$(eval $(call Download,tasn1))
++$(eval $(call Download,gnutls))
++SAMBA_DEPS:=gmp-6.3.0.tar.gz nettle-3.10.2.tar.gz libtasn1-4.21.0.tar.gz gnutls-3.8.12.tar.xz
++SAMBA_ENV=SAMBA_CC='$(TARGET_CC)' SAMBA_CROSS='$(TARGET_CROSS)' \
++	SAMBA_EXTERNAL_STAGE='$(STAGING_DIR)' SAMBA_JOBS='$(HOST_NCPU)' \
++	SAMBA_CFLAGS='$(TARGET_CFLAGS)' SAMBA_QEMU='$(SAMBA_QEMU)'
+ 
+-config_test:
+-	( if [ -f ./config_done ]; then \
+-		echo "the same configuration"; \
+-	else \
+-		make configure && touch config_done; \
+-	fi )
++define Build/Prepare
++	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
++	printf '%s  %s\n' 'e56fd59d76810932a0555aa15a14b61c16bed66110d3c75cc2ac49ddaa9ab24c' '$(DL_DIR)/gmp-6.3.0.tar.gz' 'fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5' '$(DL_DIR)/nettle-3.10.2.tar.gz' '1d8a444a223cc5464240777346e125de51d8e6abf0b8bac742ac84609167dc87' '$(DL_DIR)/libtasn1-4.21.0.tar.gz' 'a7b341421bfd459acf7a374ca4af3b9e06608dcd7bd792b2bf470bea012b8e51' '$(DL_DIR)/gnutls-3.8.12.tar.xz' | sha256sum -c -
++	tar -xf '$(DL_DIR)/$(PKG_SOURCE)' -C '$(PKG_BUILD_DIR)'
++	set -e; $(foreach arc,$(SAMBA_DEPS),tar -xf '$(DL_DIR)/$(arc)' -C '$(PKG_BUILD_DIR)';)
++	$(call PatchDir,$(PKG_BUILD_DIR)/samba-$(PKG_VERSION),./patches4)
++endef
++define Build/Configure
++	$(SAMBA_ENV) python3 ./build-samba4.py '$(PKG_BUILD_DIR)' configure
++endef
++define Build/Compile
++	$(SAMBA_ENV) python3 ./build-samba4.py '$(PKG_BUILD_DIR)' compile
++endef
++define Build/Install
++	$(SAMBA_ENV) python3 ./build-samba4.py '$(PKG_BUILD_DIR)' install
++endef
++$(eval $(call BuildPackage,samba4-suite))
++$(STAMP_PREPARED): Makefile build-samba4.py smbpasswd-compat.c $(wildcard patches4/*.patch) $(addprefix $(DL_DIR)/,$(SAMBA_DEPS))
+ 
+-configure:
+-	( test -d $(SRC_NAME) || { tar -xf $(SRC_DIR).tar.gz ; cat patches/*.patch | patch -d $(SRC_DIR) -r - -N -p1; }; \
+-	cd $(SRC_NAME) && \
+-	ac_cv_lib_attr_getxattr=no \
+-	ac_cv_search_getxattr=no \
+-	ac_cv_file__proc_sys_kernel_core_pattern=no \
+-	libreplace_cv_HAVE_C99_VSNPRINTF=yes \
+-	libreplace_cv_HAVE_GETADDRINFO=yes \
+-	libreplace_cv_HAVE_IFACE_IFCONF=yes \
+-	LINUX_LFS_SUPPORT=yes \
+-	samba_cv_CC_NEGATIVE_ENUM_VALUES=yes \
+-	samba_cv_HAVE_GETTIMEOFDAY_TZ=yes \
+-	samba_cv_HAVE_IFACE_IFCONF=yes \
+-	samba_cv_HAVE_KERNEL_OPLOCKS_LINUX=yes \
+-	samba_cv_HAVE_SECURE_MKSTEMP=yes \
+-	samba_cv_HAVE_WRFILE_KEYTAB=no \
+-	samba_cv_USE_SETREUID=yes \
+-	samba_cv_USE_SETRESUID=yes \
+-	samba_cv_have_setreuid=yes \
+-	samba_cv_have_setresuid=yes \
+-	ac_cv_header_zlib_h=no \
+-	samba_cv_zlib_1_2_3=no \
+-	ac_cv_path_PYTHON="" \
+-	ac_cv_path_PYTHON_CONFIG="" \
+-	PKG_CONFIG_PATH="$(STAGEDIR)/lib/pkgconfig" \
+-	CPPFLAGS="$(SMBCPPFLAGS)" \
+-	CFLAGS="$(SMBCFLAGS)" LDFLAGS="$(SMBLDFLAGS)" \
+-	./configure \
+-		--host=$(HOST_TARGET) \
+-		--build=$(HOST_BUILD) \
+-		--exec-prefix=/ \
+-		--prefix=/ \
+-		--enable-external-libtdb=no \
+-		--disable-external-libtalloc \
+-		--disable-dmalloc \
+-		--disable-iprint \
+-		--disable-fam \
+-		--disable-krb5developer \
+-		--disable-developer \
+-		--disable-debug \
+-		--disable-avahi \
+-		--disable-cups \
+-		--disable-pie \
+-		--disable-relro \
+-		--disable-static \
+-		--disable-swat \
+-		--disable-shared-libs \
+-		--with-libiconv="$(STAGEDIR)/lib" \
+-		--with-codepagedir=/usr/share/samba \
+-		--with-configdir=/etc \
+-		--with-included-iniparser \
+-		--with-included-popt=no \
+-		--with-rootsbindir=/sbin \
+-		--with-lockdir=/var/locks \
+-		--with-syslog \
+-		--with-nmbdsocketdir=/var/nmbd \
+-		--with-piddir=/var/run \
+-		--with-privatedir=/etc/samba \
+-		--with-sendfile-support \
+-		--without-acl-support \
+-		--without-cluster-support \
+-		--without-ads \
+-		--without-krb5 \
+-		--without-ldap \
+-		--without-pam \
+-		--without-utmp \
+-		--without-quotas \
+-		--without-sys-quotas \
+-		--without-winbind \
+-		--without-libtdb \
+-		--without-libtalloc \
+-		--without-libnetapi \
+-		--without-libsmbclient \
+-		--without-libsmbsharemodes \
+-		--without-libtevent \
+-		--without-libaddns \
+-		--with-shared-modules=pdb_tdbsam,pdb_wbc_sam,idmap_nss,nss_info_template,auth_winbind,auth_wbc,auth_domain; \
+-	mkdir -p bin; \
+-	)
+-
+-clean:
+-	if [ -f $(SRC_NAME)/Makefile ] ; then \
+-		$(MAKE) -C $(SRC_NAME) distclean ; \
+-	fi ;
+-	rm -rf $(SRC_NAME)/bin
+-	rm -f config_done
+-
+-distclean: clean
+-	@find $(SRC_NAME) -name config.h | xargs rm -f
+-	@find $(SRC_NAME) -name Makefile | xargs rm -f
+-	@find $(SRC_NAME) -name config.status | xargs rm -f
+-	@find $(SRC_NAME) -name config.cache | xargs rm -f
+-
+-romfs:
+-ifeq ($(CONFIG_FIRMWARE_INCLUDE_SMBD),y)
+-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/bin/samba_multicall /sbin/smbmulti
+-	$(ROMFSINST) -s smbmulti /sbin/smbd
+-	$(ROMFSINST) -s smbmulti /sbin/nmbd
+-	$(ROMFSINST) -s /sbin/smbmulti /bin/smbpasswd
+-	mkdir -p $(ROMFSDIR)/usr/share/samba
+-	cp -fP $(THISDIR)/$(SRC_DIR)/codepages/*.dat $(ROMFSDIR)/usr/share/samba
+-else
+-ifeq ($(CONFIG_FIRMWARE_INCLUDE_WINS),y)
+-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/bin/nmbd /sbin/nmbd
+-endif
+-endif
++romfs: $(STAMP_INSTALLED)
++	$(SAMBA_ENV) SAMBA_ROMFS='$(ROMFSDIR)' SAMBA_SMBD='$(CONFIG_FIRMWARE_INCLUDE_SMBD)' \
++	SAMBA_WINS='$(CONFIG_FIRMWARE_INCLUDE_WINS)' python3 ./build-samba4.py '$(PKG_BUILD_DIR)' romfs
+--- /dev/null
++++ b/trunk/user/samba36/build-samba4.py
+@@ -0,0 +1,68 @@
++"""Samba 与新增私有依赖在同一工作目录构建，不复制固件源码树。"""
++from pathlib import Path
++import hashlib,json,os,re,shlex,shutil,subprocess,sys
++root=Path(sys.argv[1]).resolve();task=sys.argv[2];source=root/'samba-4.25.1';stage=root/'stage'
++external=Path(os.environ['SAMBA_EXTERNAL_STAGE']).resolve();cc=os.environ['SAMBA_CC'];cross=os.environ['SAMBA_CROSS'];jobs=os.environ.get('SAMBA_JOBS','4')
++qemu=os.environ.get('SAMBA_QEMU') or shutil.which('qemu-mipsel')
++if not qemu:raise SystemExit('Samba 交叉构建需要 qemu-mipsel，可用 SAMBA_QEMU 指定已有程序')
++sysroot=subprocess.check_output(shlex.split(cc)+['--print-sysroot'],text=True).strip()
++env={**os.environ,'CC':cc,'CXX':cross+'g++','AR':cross+'ar','RANLIB':cross+'ranlib','CFLAGS':os.environ.get('SAMBA_CFLAGS','-O2')+' -std=gnu17 -fPIC','CXXFLAGS':'-O2 -std=gnu++17 -fPIC','CPPFLAGS':f'-I{stage}/include -I{external}/include','LDFLAGS':f'-L{stage}/lib -L{external}/lib -Wl,-rpath-link,{stage}/lib -Wl,-rpath-link,{external}/lib -latomic','PKG_CONFIG_LIBDIR':f'{stage}/lib/pkgconfig:{external}/lib/pkgconfig','PKG_CONFIG_PATH':'','LC_ALL':'C','WAF_NO_PREFORK':'1'}
++def run(cmd,cwd,extra=None):
++ print('+',shlex.join(list(map(str,cmd))),flush=True);subprocess.run(list(map(str,cmd)),cwd=cwd,env={**env,**(extra or {})},check=True)
++def signature():return hashlib.sha256(json.dumps({'root':str(root),'cc':subprocess.check_output(shlex.split(cc)+['--version'],text=True),'flags':env['CFLAGS'],'recipe':Path(__file__).read_text()},sort_keys=True).encode()).hexdigest()
++sig=signature()
++wrapper=root/'cross-run';wrapper.write_text('#!/bin/sh\nexec '+shlex.quote(qemu)+' -cpu 24Kf -L '+shlex.quote(sysroot)+' -E '+shlex.quote(f'LD_LIBRARY_PATH={stage}/lib:{external}/lib')+' "$@"\n');wrapper.chmod(0o755);env['SAMBA_CROSS_RUN']=str(wrapper)
++if task=='configure':
++ stage.mkdir(exist_ok=True)
++ for name,opts in [
++  ('gmp-6.3.0',['--disable-cxx']),('nettle-3.10.2',['--disable-documentation','--disable-openssl']),
++  ('libtasn1-4.21.0',['--disable-doc','--disable-tests','--disable-gcc-warnings']),
++  ('gnutls-3.8.12',['--disable-doc','--disable-tests','--disable-tools','--disable-guile','--without-p11-kit','--without-tpm','--without-idn','--with-included-unistring','--disable-nls','--disable-cxx','--without-brotli','--without-zstd','--without-zlib'])]:
++  sub=root/name;stamp=root/(name+'.dependency-signature')
++  if stamp.exists() and stamp.read_text()==sig:continue
++  if (sub/'Makefile').exists():run(['make','distclean'],sub)
++  run(['./configure','--host=mipsel-linux-musl','--prefix='+str(stage),'--enable-shared','--disable-static',*opts],sub)
++  run(['make','-j'+jobs],sub);run(['make','install'],sub);stamp.write_text(sig)
++ run(['perl','-MParse::Yapp::Driver','-e','1'],root)
++ opts=['--cross-compile','--cross-execute='+str(wrapper),'--cross-answers='+str(root/'cross-answers.txt'),'--hostcc=gcc','--prefix=/usr','--sysconfdir=/etc','--localstatedir=/var','--enable-fhs','--disable-python','--disable-fault-handling','--disable-cephfs','--disable-cephrgw','--disable-cups','--disable-glusterfs','--disable-iprint','--disable-spotlight','--disable-avahi','--without-ad-dc','--without-ads','--without-ldap','--without-winbind','--without-quotas','--without-systemd','--without-systemd-userdb','--without-regedit','--without-gpgme','--without-kernel-keyring','--without-pam','--without-utmp','--without-acl-support','--without-json','--without-libarchive','--without-ldb-lmdb','--without-iconv','--with-configdir=/etc','--with-privatedir=/etc/samba','--with-lockdir=/var/locks','--with-statedir=/etc/samba','--with-cachedir=/var/cache/samba','--with-piddir=/var/run','--bundled-libraries=talloc,tevent,tevent-util,texpect,tdb,ldb,tdr,cmocka,replace,com_err','--private-libraries=talloc,tevent,tevent-util,texpect,tdb,ldb,tdr,cmocka,replace,com_err','--with-static-modules=vfs_default,auth_builtin,auth_sam,auth_unix,pdb_smbpasswd,pdb_tdbsam,!DEFAULT,!FORCED','--with-shared-modules=!DEFAULT,!FORCED']
++ run(['./configure',*opts],source)
++elif task=='compile':
++ run(['make','-j'+jobs],source)
++ run(shlex.split(cc)+['-Os','-std=gnu17',str(Path(__file__).with_name('smbpasswd-compat.c')),'-o',str(root/'smbpasswd-compat')],root)
++elif task=='install':run(['make','install','DESTDIR='+str(root/'install')],source)
++elif task=='romfs':
++ dest=Path(os.environ['SAMBA_ROMFS']).resolve();install=root/'install';manifest=[];queue=[];seen=set()
++ def copy(src,relative):
++  target=dest/relative;target.parent.mkdir(parents=True,exist_ok=True)
++  assert target.parent.resolve().is_relative_to(dest),('destination escapes romfs',target)
++  machine=subprocess.check_output([cross+'readelf','-h',str(src.resolve())],text=True);assert 'MIPS' in machine,src
++  if target.is_symlink():target.unlink()
++  shutil.copyfile(src.resolve(),target);target.chmod(0o755);queue.append(target)
++  manifest.append({'path':relative,'source':str(src),'sha256':hashlib.sha256(target.read_bytes()).hexdigest()})
++ if os.environ.get('SAMBA_SMBD')=='y':
++  for name,relative in [('smbd','sbin/smbd'),('nmbd','sbin/nmbd'),('smbpasswd','usr/bin/smbpasswd4'),('testparm','usr/bin/testparm')]:
++   matches=[x for x in install.rglob(name) if x.is_file()];assert len(matches)==1,(name,matches);copy(matches[0],relative)
++  copy(root/'smbpasswd-compat','bin/smbpasswd')
++  # RPC 按需助手沿用安装路径；禁止遗漏导致浏览共享或管理请求失败。
++  for f in install.glob('usr/libexec/samba/*'):
++   if f.is_file():copy(f,str(f.relative_to(install)))
++ elif os.environ.get('SAMBA_WINS')=='y':
++  matches=[x for x in install.rglob('nmbd') if x.is_file()];assert len(matches)==1;copy(matches[0],'sbin/nmbd')
++ candidates={}
++ for base in [install,stage/'lib',external/'lib',Path(sysroot)/'lib',Path(sysroot)/'usr/lib']:
++  if base.exists():
++   for f in sorted(base.rglob('*.so*')):
++    if f.is_file():candidates.setdefault(f.name,f)
++ while queue:
++  f=queue.pop();r=subprocess.run([cross+'readelf','-d',str(f)],capture_output=True,text=True,check=True)
++  for name in re.findall(r'Shared library: \[([^\]]+)\]',r.stdout):
++   if name in seen:continue
++   seen.add(name)
++   if name=='libc.so':continue
++   assert name in candidates,('missing dependency',name)
++   copy(candidates[name],'usr/lib/'+name)
++ # 只装实际引用的动态库，不把客户端、开发文件和整棵依赖目录塞进固件。
++ for item in manifest:
++  target=dest/item['path'];run([cross+'strip','--strip-unneeded',target],root);item['sha256']=hashlib.sha256(target.read_bytes()).hexdigest();item['bytes']=target.stat().st_size
++ (root/'romfs-manifest.json').write_text(json.dumps(manifest,indent=2))
++else:raise SystemExit('未知构建阶段')
+--- /dev/null
++++ b/trunk/user/samba36/patches4/001-samba-old-kernel-reflink.patch
+@@ -0,0 +1,12 @@
++--- a/lib/replace/replace.c
+++++ b/lib/replace/replace.c
++@@ -1255,7 +1255,8 @@
++ 			 off_t dst_off,
++ 			 off_t to_copy)
++ {
++-#ifdef HAVE_LINUX_IOCTL
+++/* 旧内核头文件没有 reflink 接口时，交给调用方使用普通复制。 */
+++#if defined(HAVE_LINUX_IOCTL) && defined(FICLONERANGE)
++ 	struct file_clone_range cr;
++ 
++ 	cr = (struct file_clone_range) {
+--- /dev/null
++++ b/trunk/user/samba36/patches4/002-samba-cross-generators.patch
+@@ -0,0 +1,32 @@
++--- a/third_party/heimdal_build/et_compile_wrapper.sh
+++++ b/third_party/heimdal_build/et_compile_wrapper.sh
++@@ -37,7 +37,12 @@
++ 	# files, which makes Heimdal's compile_et fail mysteriously when writing to them.
++ 	rm -f `basename "${FILE}" .et`.c
++ 	rm -f `basename "${FILE}" .et`.h
++-	"${CMD}" "${FILE}" >&2 || exit 1;
+++	# 交叉编译生成的工具使用指定模拟器执行，不依赖宿主全局 binfmt。
+++	if [ -n "${SAMBA_CROSS_RUN:-}" ]; then
+++		"${SAMBA_CROSS_RUN}" "${CMD}" "${FILE}" >&2 || exit 1
+++	else
+++		"${CMD}" "${FILE}" >&2 || exit 1
+++	fi
++ 	cd "${CURDIR}"
++ 	TMP="${SOURCE}.$$"
++ 	mv "${SOURCE}" "${TMP}" && {
++--- a/third_party/heimdal_build/asn1_compile_wrapper.sh
+++++ b/third_party/heimdal_build/asn1_compile_wrapper.sh
++@@ -49,7 +49,12 @@
++ }
++ 
++ cd ${DESTDIR} && {
++-	${ABS_BUILDDIR}/${CMD} ${OPTIONS} ${FILE} ${NAME} >&2 || exit 1;
+++	# 交叉执行仅作用于本次构建，不替换系统模拟器。
+++	if [ -n "${SAMBA_CROSS_RUN:-}" ]; then
+++		"${SAMBA_CROSS_RUN}" "${ABS_BUILDDIR}/${CMD}" ${OPTIONS} "${FILE}" "${NAME}" >&2 || exit 1
+++	else
+++		"${ABS_BUILDDIR}/${CMD}" ${OPTIONS} "${FILE}" "${NAME}" >&2 || exit 1
+++	fi
++ 	cd ${CURDIR}
++ } || {
++ 	echo "${SELF}:cannot cd into '${BUILDDIR}'" >&2;
+--- /dev/null
++++ b/trunk/user/samba36/patches4/003-samba-cross-asn1-rule.patch
+@@ -0,0 +1,23 @@
++--- a/third_party/heimdal_build/wscript_build
+++++ b/third_party/heimdal_build/wscript_build
++@@ -1,6 +1,7 @@
++ #!/usr/bin/env python
++ 
++ import os
+++import shlex
++ from samba_utils import SET_TARGET_TYPE
++ from samba_autoconf import CURRENT_CFLAGS
++ from samba_utils import LOAD_ENVIRONMENT, TO_LIST
++@@ -64,8 +65,11 @@
++     else:
++         template_str = ""
++ 
+++    # 使用本次配置的交叉执行器运行目标架构生成器。
+++    cross_run = os.environ.get("SAMBA_CROSS_RUN", "")
+++    cross_prefix = (" " + shlex.quote(cross_run)) if cross_run else ""
++     asn1_rule = cd_rule + \
++-        no_leak_check + \
+++        no_leak_check + cross_prefix + \
++         ' "${ASN1_COMPILE}" ${OPTION_FILE} ${ASN1OPTIONS} ' \
++         + template_str \
++         + ' --one-code-file "${SRC[0].abspath(env)}" ${ASN1NAME}'
+--- /dev/null
++++ b/trunk/user/samba36/smbpasswd-compat.c
+@@ -0,0 +1,38 @@
++/* 兼容原固件的用户名/密码参数；密码通过匿名临时文件传给新版工具。 */
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <errno.h>
++#include <sys/wait.h>
++#ifndef SMBPASSWD_REAL
++#define SMBPASSWD_REAL "/usr/bin/smbpasswd4"
++#endif
++int main(int argc, char **argv)
++{
++    FILE *input;
++    pid_t child, waited;
++    int status;
++    if (argc != 3 || !argv[1][0] || argv[1][0] == '-' ||
++        strpbrk(argv[1], "\r\n") || strpbrk(argv[2], "\r\n")) {
++        fputs("无效的共享账号参数\n", stderr);
++        return 2;
++    }
++    input = tmpfile();
++    if (!input) return 1;
++    if (fprintf(input, "%s\n%s\n", argv[2], argv[2]) < 0 || fflush(input)) {
++        fclose(input); return 1;
++    }
++    rewind(input);
++    child = fork();
++    if (child < 0) { fclose(input); return 1; }
++    if (!child) {
++        if (dup2(fileno(input), STDIN_FILENO) < 0) _exit(126);
++        fclose(input);
++        execl(SMBPASSWD_REAL, "smbpasswd4", "-s", "-a", argv[1], (char *)NULL);
++        _exit(127);
++    }
++    fclose(input);
++    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
++    return waited == child && WIFEXITED(status) ? WEXITSTATUS(status) : 1;
++}
+--- /dev/null
++++ b/trunk/user/scripts/files/etc_ro/optional-net/sing-box-migrate.lua
+@@ -0,0 +1,151 @@
++-- 仅输出候选 JSON；调用者验证后自行替换，绝不覆盖输入文件。
++local cjson = require "cjson"
++local function fail(s) io.stderr:write("需手动迁移："..s.."；原文件未修改\n"); os.exit(1) end
++local f=io.open(arg[1] or "", "rb"); if not f then fail("无法读取输入") end
++local raw=f:read("*a");f:close()
++if #raw>4*1024*1024 then fail("配置超过 4 MiB") end
++local ok,c=pcall(cjson.decode,raw);if not ok or type(c)~="table" then fail("不是有效 JSON 对象") end
++local function arr(v) if v==nil then return {} end; if type(v)~="table" then fail("列表类型错误") end;return v end
++local function populated(t) if #t>0 then return t end;return nil end
++local function move(t,a,b) if t[a]~=nil then if t[b]~=nil then fail(a.." 与 "..b.." 冲突") end;t[b]=t[a];t[a]=nil end end
++local function scan(t)
++ if type(t)~="table" then return end
++ for k,v in pairs(t) do
++  if k=="geoip" or k=="geosite" then fail("GeoIP/Geosite 需要显式提供对应规则集") end
++  scan(v)
++ end
++end
++scan(c)
++local dns=c.dns
++if dns then
++ if dns.independent_cache==true then fail("independent_cache 已移除，请确认缓存隔离要求") end
++ dns.independent_cache=nil
++ for _,s in ipairs(arr(dns.servers)) do
++  if not s.type then
++   local a=s.address;if type(a)~="string" then fail("DNS 地址缺失") end
++   if s.strategy or s.client_subnet then fail("每服务器 strategy/client_subnet 需要按规则确认作用范围") end
++   if s.address_strategy and not s.address_resolver then fail("address_strategy 缺少 address_resolver") end
++   if s.address_resolver then
++    s.domain_resolver={server=s.address_resolver,strategy=s.address_strategy}
++    s.address_resolver=nil;s.address_strategy=nil
++   end
++   if a=="local" then s.type="local"
++   elseif a=="fakeip" then
++    local fake=dns.fakeip;if not fake or not fake.enabled then fail("fakeip 地址池未启用") end
++    s.type="fakeip";s.inet4_range=fake.inet4_range;s.inet6_range=fake.inet6_range
++   elseif a:match("^rcode://") then fail("rcode 服务器需要转换成有明确匹配条件的 predefined 规则")
++   elseif a:match("^dhcp://") then s.type="dhcp";local i=a:sub(8);if i~="auto" then s.interface=i end
++   else
++    local scheme,rest=a:match("^(%w+)://(.+)$");scheme=scheme or "udp";rest=rest or a
++    if not ({udp=true,tcp=true,tls=true,https=true,quic=true,h3=true})[scheme] then fail("未知 DNS 传输 "..scheme) end
++    local authority,path=rest:match("^([^/]+)(/.*)$");authority=authority or rest
++    if authority:find("[@%s]") then fail("DNS URL 含有用户信息或空白") end
++    local host,port=authority:match("^%[([^%]]+)%]:(%d+)$")
++    if not host then host=authority:match("^%[([^%]]+)%]$") end
++    if not host then
++     local _,colons=authority:gsub(":",":")
++     if colons==1 then host,port=authority:match("^([^:]+):(%d+)$") end
++     host=host or authority
++    end
++    s.type=scheme;s.server=host
++    if port then port=tonumber(port);if port<1 or port>65535 then fail("DNS 端口无效") end;s.server_port=port end
++    if path and scheme~="https" and scheme~="h3" then fail("此 DNS 传输不接受 URL 路径") end
++    if path and path~="/dns-query" then s.path=path end
++   end
++   -- 旧远端 DNS 默认经默认出站；新版默认直连，迁移时保留原来的路径。
++   if s.type~="local" and s.type~="fakeip" and s.type~="dhcp" and not s.detour then
++    local chosen=nil;local all=arr(c.outbounds);local final=c.route and c.route.final
++    if final then for _,o in ipairs(all) do if o.tag==final then chosen=o end end
++    else chosen=all[1] end
++    if chosen then
++     if chosen.type=="direct" then
++      for key,_ in pairs(chosen) do if key~="type" and key~="tag" and key~="domain_strategy" and key~="domain_resolver" then fail("默认直连出站带自定义拨号参数，需核对 DNS 路由") end end
++     elseif chosen.tag and chosen.type~="block" and chosen.type~="dns" then s.detour=chosen.tag
++     else fail("旧 DNS 默认出站无法确定，请明确指定 detour") end
++    end
++   end
++   s.address=nil
++  end
++ end
++ if dns.fakeip then
++  if dns.fakeip.enabled then
++   local found=false;for _,s in ipairs(arr(dns.servers)) do if s.type=="fakeip" then found=true end end
++   if not found then fail("启用的 FakeIP 没有对应服务器") end
++  end
++  dns.fakeip=nil
++ end
++ for _,r in ipairs(arr(dns.rules)) do if r.outbound~=nil then fail("DNS outbound 匹配需要指定 domain_resolver，不能猜测") end end
++end
++local route=c.route or {};local rules=arr(route.rules);local prepend={};local special={};local outgoing={}
++if dns and not route.default_domain_resolver and #arr(c.outbounds)>0 then
++ if not dns.final or #arr(dns.rules)>0 then fail("出站域名解析需要明确的默认 DNS；复杂 DNS 规则请手动核对") end
++ route.default_domain_resolver=dns.final
++end
++for _,o in ipairs(arr(c.outbounds)) do
++ if o.type=="block" or o.type=="dns" then
++  if not o.tag then fail("特殊出站缺少 tag") end
++  special[o.tag]=o.type=="block" and "reject" or "hijack-dns"
++ elseif o.type=="wireguard" then fail("WireGuard 必须确认 endpoint 的地址、对端和 allowed_ips")
++ else
++  if o.override_address or o.override_port then fail("出站目标覆盖需要按路由引用关系迁移") end
++  if o.domain_strategy then
++   local resolver=route.default_domain_resolver or (dns and dns.final)
++   if not resolver then fail("domain_strategy 缺少明确的 DNS 解析器") end
++   if type(resolver)~="string" then fail("复杂默认解析器请手动迁移") end
++   if o.domain_resolver then fail("domain_strategy 与 domain_resolver 同时存在") end
++   o.domain_resolver={server=resolver,strategy=o.domain_strategy};o.domain_strategy=nil
++  end
++  outgoing[#outgoing+1]=o
++ end
++end
++for _,o in ipairs(outgoing) do
++ for _,tag in ipairs(arr(o.outbounds)) do if special[tag] then fail("选择器引用了已移除的特殊出站") end end
++end
++local function convert_rules(rs)
++ for _,r in ipairs(rs) do
++  if r.outbound and special[r.outbound] then
++   if r.action and r.action~="route" then fail("特殊出站与现有 action 冲突") end
++   r.action=special[r.outbound];r.outbound=nil
++  end
++  if r.rules then convert_rules(r.rules) end
++ end
++end
++convert_rules(rules)
++if route.final and special[route.final] then rules[#rules+1]={action=special[route.final]};route.final=nil end
++local tags={};for _,i in ipairs(arr(c.inbounds)) do if i.tag then if tags[i.tag] then fail("入站 tag 重复") end;tags[i.tag]=true end end
++for n,i in ipairs(arr(c.inbounds)) do
++ if i.sniff or i.domain_strategy then
++  if i.sniff_override_destination==false or i.sniff_override_destination==true then fail("sniff_override_destination 需要确认目的地址覆盖语义") end
++  if i.sniffing then fail("未知 sniffing 字段") end
++  if not i.tag then local tag="migrated-in-"..n;if tags[tag] then fail("生成的入站 tag 冲突") end;i.tag=tag;tags[tag]=true end
++  if i.domain_strategy then prepend[#prepend+1]={inbound={i.tag},action="resolve",strategy=i.domain_strategy} end
++  if i.sniff then prepend[#prepend+1]={inbound={i.tag},action="sniff",timeout=i.sniff_timeout} end
++ end
++ i.sniff=nil;i.sniff_timeout=nil;i.domain_strategy=nil;i.sniff_override_destination=nil
++ if i.type=="tun" then
++  for _,pair in ipairs({{"inet4_address","inet6_address","address"},{"inet4_route_address","inet6_route_address","route_address"},{"inet4_route_exclude_address","inet6_route_exclude_address","route_exclude_address"}}) do
++   if i[pair[1]] or i[pair[2]] then
++    if i[pair[3]] then fail("新旧 TUN 地址字段同时存在") end
++    local a={};for _,key in ipairs({pair[1],pair[2]}) do
++     local values=i[key];if type(values)=="string" then values={values} end
++     for _,v in ipairs(arr(values)) do a[#a+1]=v end;i[key]=nil
++    end
++    i[pair[3]]=populated(a)
++   end
++  end
++ end
++end
++for _,r in ipairs(rules) do prepend[#prepend+1]=r end
++route.rules=populated(prepend)
++if next(route) then c.route=route end
++c.outbounds=populated(outgoing)
++if c.experimental then
++ local api=c.experimental.clash_api
++ if api and (api.cache_file or api.cache_id or api.store_selected or api.store_fakeip) then
++  if c.experimental.cache_file then fail("新旧缓存设置同时存在") end
++  c.experimental.cache_file={enabled=true,path=api.cache_file,cache_id=api.cache_id,store_fakeip=api.store_fakeip}
++  api.cache_file=nil;api.cache_id=nil;api.store_selected=nil;api.store_fakeip=nil
++ end
++ if c.experimental.cache_file and c.experimental.cache_file.store_rdrc then fail("store_rdrc 已移除，请确认缓存要求") end
++end
++io.write(cjson.encode(c),"\n")
+--- /dev/null
++++ b/trunk/user/scripts/files/usr/bin/optional-net.sh
+@@ -0,0 +1,222 @@
++#!/bin/sh
++# 可选核心独立管理：默认不启用，不修改 DNS、透明代理或系统启动配置。
++set -eu
++umask 077
++NAME=${1:-};ACTION=${2:-status}
++case "$NAME" in sing-box|mihomo|tailscale) ;; *) echo '用法：optional-net.sh sing-box|mihomo|tailscale install|start|stop|restart|check|status|rollback|config [文件]' >&2;exit 2;; esac
++BASE=${OPTIONAL_NET_BASE:-/media/mtd_rwfs/optional-net}
++RUNROOT=${OPTIONAL_NET_RUN:-/var/run/optional-net}
++case "$BASE:$RUNROOT" in /*:/*) ;; *) echo '数据和运行目录必须为绝对路径' >&2;exit 2;; esac
++case "$BASE" in /|/etc|/tmp|/media|/media/mtd_rwfs) echo '请使用独立数据子目录' >&2;exit 2;; esac
++case "$BASE/$RUNROOT/" in *'/../'*|*'/./'*|*' '*|*'\'*) echo '路径不能包含相对段、空格或反斜杠' >&2;exit 2;; esac
++DIR=$BASE/$NAME;RUN=$RUNROOT/$NAME;CURRENT=$DIR/current
++STAGE=;DOWNLOAD=
++fail() { echo "$*" >&2; exit 1; }
++cleanup() {
++    if [ -n "$STAGE" ]; then case "$STAGE" in "$DIR"/.stage.*) rm -rf "$STAGE";; esac; fi
++    [ -z "$DOWNLOAD" ] || rm -f "$DOWNLOAD"
++}
++trap cleanup EXIT
++trap 'exit 1' HUP INT TERM
++for d in "$BASE" "$DIR" "$RUNROOT" "$RUN"; do [ ! -L "$d" ] || fail '数据目录不能是符号链接'; done
++mkdir -p "$RUN";chmod 700 "$RUN"
++exec 9>"$RUN/lock"
++flock -n 9 || fail '已有同一核心的管理操作正在执行'
++case "$NAME" in
++sing-box)
++    VERSION=1.14.4;ARCHIVE=sing-box-1.14.4-linux-mipsle-softfloat.tar.gz
++    URL=https://github.com/SagerNet/sing-box/releases/download/v1.14.4/$ARCHIVE
++    HASH=4abf94c284462bca0d9d23966b26e5675a2c0137b7945534f0fa1b0fc309b298
++    BINHASH=2ebe1bea84d0cf34372e03a1ae98ee0b872d208bc451c6e9a8bf835ee584792c
++    SIZE=84803741;MEMBER=sing-box-1.14.4-linux-mipsle-softfloat/sing-box;CONF=$DIR/config.json;EXE=sing-box;;
++mihomo)
++    VERSION=1.19.33;ARCHIVE=mihomo-linux-mipsle-softfloat-v1.19.33.gz
++    URL=https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/$ARCHIVE
++    HASH=ad6b3837db8dff2a6853a3c1604b82ee2f7e4019f626a5ab61f46b7c565871c4
++    BINHASH=c246ff6d3a0da9b01e75c73a04d7ce66bc8644703c8a59353d222fedadf0f362
++    SIZE=63701149;CONF=$DIR/config.yaml;EXE=mihomo;;
++tailscale)
++    VERSION=1.104.4;ARCHIVE=tailscale_1.104.4_mipsle.tgz
++    URL=https://pkgs.tailscale.com/stable/$ARCHIVE
++    HASH=34ec037b1f56690fcd383a67bec48f06ccb49036642228e2dc864bbdf55df17d
++    BINHASH=7cf9efeb16fb09c0696c468a64e4d83000308674abaae6c93ebb3700af1a4fa3
++    CLIHASH=f6712bddf591ffb331753a7d3c7dd898b02e3ba619c3ecba5c038973ae52bf50
++    SIZE=76466211;CONF=$DIR/tailscale.state;EXE=tailscaled;;
++esac
++runbin() { if [ -n "${OPTIONAL_NET_RUNNER:-}" ]; then "$OPTIONAL_NET_RUNNER" "$@";else "$@";fi; }
++uptime_seconds() { read -r service_uptime service_idle < /proc/uptime;printf '%s\n' "${service_uptime%%.*}"; }
++timed_check() {
++    # 旧机型 BusyBox 使用 -t，当前版本与 GNU 使用位置参数；管理锁只由父进程持有。
++    help=$(timeout --help 2>&1 || :)
++    case "$help" in *'[-t SECS]'*) set -- timeout -s KILL -t 30 "$@";; *) set -- timeout -s KILL 30 "$@";; esac
++    (exec 9>&-;exec "$@")
++}
++verify() { actual=$(sha256sum "$1" | awk '{print $1}');[ "$actual" = "$2" ]; }
++storage_ready() {
++    mkdir -p "$DIR";chmod 700 "$DIR"
++    [ -w "$DIR" ] || fail '数据目录不可写'
++    # 不把大程序写入 RAM 文件系统；选择路径所处的最长匹配挂载点。
++    awk -v path="$DIR/" 'index(path,$2 "/")==1 || $2=="/" {if(length($2)>best){best=length($2);type=$3;opts=$4}} END {exit !(type!="tmpfs" && type!="ramfs" && opts ~ /(^|,)rw(,|$)/)}' /proc/mounts || fail '请选择已挂载的可写持久存储'
++    [ ! -L "$CONF" ] || fail '配置文件不能是符号链接'
++}
++running() {
++    [ -f "$RUN/pid" ] && [ ! -L "$RUN/pid" ] || return 1
++    read -r PID START <"$RUN/pid" || return 1
++    case "$PID:$START" in *[!0-9:]*|:*|*:) return 1;; esac
++    [ "$PID" -gt 1 ] && [ -r "/proc/$PID/stat" ] || return 1
++    [ "$(awk '{print $22}' "/proc/$PID/stat" 2>/dev/null)" = "$START" ] || return 1
++    tr '\000' '\n' 2>/dev/null <"/proc/$PID/cmdline" | grep -Fqx "$CURRENT/$EXE" || return 1
++    kill -0 "$PID" 2>/dev/null
++}
++stop_service() {
++    if running; then
++        kill -TERM "$PID"
++        stop_deadline=$(( $(uptime_seconds) + 5 ))
++        while running && [ "$(uptime_seconds)" -lt "$stop_deadline" ];do sleep 0.1;done
++        if running;then kill -KILL "$PID";fi
++    fi
++    rm -f "$RUN/pid"
++}
++check_config() {
++    core=$1;cfg=$2
++    [ "$NAME" = tailscale ] && return 0
++    [ -s "$cfg" ] && [ ! -L "$cfg" ] || { echo '缺少有效配置文件' >&2;return 1; }
++    case "$NAME" in
++    sing-box) set -- "$core/sing-box" check -c "$cfg" -D "$DIR" ;;
++    mihomo) set -- "$core/mihomo" -t -d "$DIR" -f "$cfg" ;;
++    esac
++    if [ -n "${OPTIONAL_NET_RUNNER:-}" ];then timed_check "$OPTIONAL_NET_RUNNER" "$@" || return 1;else timed_check "$@" || return 1;fi
++    if [ "$NAME" = mihomo ];then
++        # 管理 API 可在代理绑定失败后继续存活，必须从块式 YAML 取出要求的代理端口。
++        # 无法识别的端口格式明确拒绝，避免把 API 监听误判为代理启动成功。
++        awk '
++        /^(port|socks-port|mixed-port|redir-port|tproxy-port):/ {
++            value=$0;sub(/^[^:]+:[ \t]*/,"",value);sub(/[ \t]+#.*/,"",value);sub(/[ \t\r]+$/,"",value)
++            if(value !~ /^[0-9]+$/ || value+0>65535){bad=1;next}
++            if(value+0>0){printf "%04X ",value+0;count++}
++        }
++        END{if(bad || !count)exit 1;print ""}' "$cfg" >"$RUN/required-ports" || {
++            echo '管理脚本需要块式 YAML 中明确的非零 port、socks-port 或 mixed-port 等代理端口' >&2;return 1;
++        }
++    fi
++}
++has_listener() {
++    owned=$(ls -l /proc/"$PID"/fd 2>/dev/null | sed -n 's/.* -> socket:\[\([0-9]*\)\]$/\1/p' | tr '\n' ' ')
++    [ -n "$owned" ] || return 1
++    ports=
++    [ "$NAME" != mihomo ] || ports=$(cat "$RUN/required-ports")
++    awk -v owned=" $owned" -v ports="$ports" '
++    BEGIN{count=split(ports,p," ");for(i=1;i<=count;i++)if(p[i]!="")required[p[i]]=1}
++    $4=="0A" && index(owned," " $10 " "){ok=1;split($2,a,":");delete required[a[2]]}
++    END{for(k in required)exit 1;exit !ok}' /proc/net/tcp /proc/net/tcp6
++}
++start_service() {
++    if running;then echo '已运行';return 0;fi
++    storage_ready
++    [ -x "$CURRENT/$EXE" ] || fail '尚未安装核心'
++    check_config "$CURRENT" "$CONF" >"$RUN/check.log" 2>&1 || { tail -c 2048 "$RUN/check.log" >&2;return 1; }
++    # 日志交给系统环形日志；不在 RAM 中积累无限增长的普通文件。
++    rm -f "$RUN/log.pipe";mkfifo -m 600 "$RUN/log.pipe"
++    (exec 9>&-;exec logger -t "optional-$NAME") <"$RUN/log.pipe" &
++    case "$NAME" in
++    sing-box) set -- "$CURRENT/sing-box" run -c "$CONF" -D "$DIR" ;;
++    mihomo) set -- "$CURRENT/mihomo" -d "$DIR" -f "$CONF" ;;
++    tailscale) set -- "$CURRENT/tailscaled" --tun=userspace-networking --state="$CONF" --socket="$RUN/tailscale.sock" --port=0 ;;
++    esac
++    # PID 对应 exec 后的真实核心；后台进程关闭管理锁。
++    (exec 9>&-;if [ -n "${OPTIONAL_NET_RUNNER:-}" ];then exec "$OPTIONAL_NET_RUNNER" "$@";else exec "$@";fi) </dev/null >"$RUN/log.pipe" 2>&1 &
++    PID=$!;START=$(awk '{print $22}' "/proc/$PID/stat");printf '%s %s\n' "$PID" "$START" >"$RUN/pid"
++    # 给 exec 留出调度时间，避免把启动包装进程误认作旧 PID。
++    sleep 0.2
++    # 按单调运行时间限时，不能把慢 CPU 上的检查开销误算成固定循环次数。
++    ready=0;start_deadline=$(( $(uptime_seconds) + 30 ))
++    while [ "$(uptime_seconds)" -lt "$start_deadline" ];do
++        if ! running;then echo '核心已退出，请查看系统日志' >&2;rm -f "$RUN/pid";return 1;fi
++        if [ "$NAME" = tailscale ];then
++            if [ -S "$RUN/tailscale.sock" ] && runbin "$CURRENT/tailscale" --socket="$RUN/tailscale.sock" status --json >"$RUN/status.json" 2>/dev/null && grep -q 'BackendState' "$RUN/status.json";then ready=1;break;fi
++        elif has_listener;then
++            # 监听出现后再等一轮核心初始化，避免首次请求碰到尚未装载的规则。
++            sleep 1
++            if running && has_listener;then ready=1;break;fi
++        fi
++        sleep 0.1
++    done
++    if [ "$ready" != 1 ];then stop_service;echo '核心未就绪，未修改 DNS 或防火墙' >&2;return 1;fi
++    [ "$NAME" = tailscale ] || cp "$CONF" "$RUN/active-config"
++    echo '核心已启动并监听；远端节点连通性需要另行检查'
++}
++restart_service() {
++    storage_ready;check_config "$CURRENT" "$CONF" || return 1
++    restore=0
++    if [ "$NAME" != tailscale ] && running && [ -f "$RUN/active-config" ];then
++        cp "$RUN/active-config" "$RUN/restart-config";restore=1
++    fi
++    stop_service
++    if start_service;then rm -f "$RUN/restart-config";return 0;fi
++    if [ "$restore" = 1 ];then
++        cp "$CONF" "$CONF.failed"
++        cp "$RUN/restart-config" "$CONF"
++        if start_service;then echo '新配置启动失败，已恢复上一次运行配置；失败配置另存为 .failed' >&2;fi
++    fi
++    return 1
++}
++install_core() {
++    storage_ready
++    running && fail '请先停止该核心，再安装；现有进程与配置已保留'
++    free=$(df -Pk "$DIR" | awk 'NR==2{print $4}')
++    need=$((SIZE/1024+32768))
++    [ "$free" -ge "$need" ] || fail "可用空间不足，需要至少 ${need} KiB 以保留回退版本"
++    archive=${3:-}
++    if [ -z "$archive" ];then DOWNLOAD=$DIR/.download-$$;archive=$DOWNLOAD;curl -fL --retry 2 --connect-timeout 15 --max-time 600 -o "$archive" "$URL" || fail '下载失败，可指定本地官方压缩包重试';fi
++    [ -f "$archive" ] && verify "$archive" "$HASH" || fail '压缩包 SHA-256 不符，未替换程序'
++    STAGE=$(mktemp -d "$DIR/.stage.XXXXXX")
++    case "$NAME" in
++    sing-box) tar -xzOf "$archive" "$MEMBER" >"$STAGE/sing-box" ;;
++    mihomo) gzip -dc "$archive" >"$STAGE/mihomo" ;;
++    tailscale)
++        tar -xzOf "$archive" "tailscale_${VERSION}_mipsle/tailscaled" >"$STAGE/tailscaled"
++        tar -xzOf "$archive" "tailscale_${VERSION}_mipsle/tailscale" >"$STAGE/tailscale"
++        verify "$STAGE/tailscale" "$CLIHASH" || fail '命令行程序校验失败';chmod 755 "$STAGE/tailscale" ;;
++    esac
++    verify "$STAGE/$EXE" "$BINHASH" || fail '核心程序校验失败'
++    chmod 755 "$STAGE/$EXE"
++    if [ -f "$CONF" ];then check_config "$STAGE" "$CONF" || fail '现有配置不兼容；旧核心和配置均保留，请先迁移';fi
++    dest=$DIR/$VERSION
++    if [ -e "$dest" ];then verify "$dest/$EXE" "$BINHASH" || fail '同版本目录内容不一致，请先检查';rm -f "$STAGE/$EXE" "$STAGE/tailscale";rmdir "$STAGE";STAGE=
++    else mv "$STAGE" "$dest";STAGE=;fi
++    # 保留旧链接用于回退，不删除旧配置或旧版本目录。
++    if [ -L "$CURRENT" ] && [ "$CURRENT/$EXE" -ef "$dest/$EXE" ];then echo '已安装此版本，回退记录保留';return 0;fi
++    if [ -L "$CURRENT" ];then cp -P "$CURRENT" "$DIR/.previous.new";mv -Tf "$DIR/.previous.new" "$DIR/previous";fi
++    rm -f "$DIR/.current.new";ln -s "$VERSION" "$DIR/.current.new";mv -Tf "$DIR/.current.new" "$CURRENT"
++    echo "$NAME $VERSION 已安装，未启动"
++}
++case "$ACTION" in
++install) install_core "$@" ;;
++start) start_service ;;
++stop) stop_service ;;
++restart) restart_service ;;
++check) check_config "$CURRENT" "$CONF" ;;
++status) if running;then echo "running pid=$PID";else echo stopped;fi ;;
++config)
++    [ "$NAME" != tailscale ] || fail 'Tailscale 使用自己的登录与状态文件'
++    storage_ready;input=${3:-};[ -f "$input" ] || fail '请指定配置文件'
++    STAGE=$(mktemp -d "$DIR/.stage.XXXXXX");cp "$input" "$STAGE/config.$([ "$NAME" = sing-box ] && echo json || echo yaml)"
++    candidate=$STAGE/config.$([ "$NAME" = sing-box ] && echo json || echo yaml)
++    check_config "$CURRENT" "$candidate" || fail '候选配置检查失败，当前配置保留'
++    [ ! -f "$CONF" ] || cp -p "$CONF" "$CONF.previous"
++    mv "$candidate" "$CONF";echo '配置已保存，运行进程未重启' ;;
++migrate)
++    [ "$NAME" = sing-box ] || fail '自动字段迁移仅用于 Sing-box；Mihomo 继续使用原 YAML 配置'
++    storage_ready;input=${3:-};[ -f "$input" ] || fail '请指定原配置文件'
++    lua -v >/dev/null 2>&1 || fail '此固件未包含 Lua；请在 Ubuntu 执行随源码提供的迁移工具，再导入结果'
++    STAGE=$(mktemp -d "$DIR/.stage.XXXXXX");candidate=$STAGE/config.json
++    lua /etc_ro/optional-net/sing-box-migrate.lua "$input" >"$candidate" || fail '配置无法安全自动迁移，原文件保留'
++    check_config "$CURRENT" "$candidate" || fail '迁移结果未通过当前核心检查，原文件保留'
++    mv "$candidate" "$DIR/config.migrated.json";echo "$DIR/config.migrated.json：已生成并校验，尚未导入或重启" ;;
++rollback)
++    running && fail '请先停止核心再回退'
++    [ -L "$DIR/previous" ] && [ -x "$DIR/previous/$EXE" ] || fail '没有上一版程序'
++    check_config "$DIR/previous" "$CONF" || fail '当前配置不兼容上一版，未切换'
++    cp -P "$DIR/previous" "$DIR/.current.new";mv -Tf "$DIR/.current.new" "$CURRENT";echo '已回退，未启动' ;;
++*) fail '未知操作' ;;
++esac
+--- a/trunk/user/shadowsocks/scripts/shadowsocks.sh
++++ b/trunk/user/shadowsocks/scripts/shadowsocks.sh
+@@ -46,7 +46,8 @@
+ 	ssr) ret="/usr/bin/ssr-redir" ;;
+ 	ssr-local) ret="/usr/bin/ssr-local" ;;
+ 	ssr-server) ret="/usr/bin/ssr-server" ;;
+-	v2ray|xray)
++	xray) ret="/usr/bin/xray" ;;
++	v2ray)
+ 		if [ -f "/usr/bin/$1" ]; then
+ 			ret="/usr/bin/$1"
+ 		else
+@@ -65,8 +66,9 @@
+ 	 	echo 0 > /sys/fs/cgroup/cpu/$NAME/tasks
+ 	 	echo 0 > /sys/fs/cgroup/memory/$NAME/tasks
+ 	 fi
+-	 "$@" > /dev/null 2>&1
++	 exec "$@" >> /tmp/ssrplus.log 2>&1
+ 	) &
++	PROXY_RUN_PID=$!
+ }
+ 
+ cgroups_init() {
+@@ -84,59 +86,47 @@
+ }
+ 
+ cgroups_cleanup() {
++	[ -d /sys/fs/cgroup/cpu/$NAME ] || return 0
+ 	cat /sys/fs/cgroup/cpu/$NAME/tasks > /sys/fs/cgroup/cpu/tasks
+ 	cat /sys/fs/cgroup/memory/$NAME/tasks > /sys/fs/cgroup/memory/tasks
+ 	rmdir /sys/fs/cgroup/cpu/$NAME
+ 	rmdir /sys/fs/cgroup/memory/$NAME
+ }
+ 
++# 配置生成与核心检查共用同一入口，禁止破坏 JSON 转义。
++. /etc_ro/ss/proxy-config.sh
++
+ gen_config_file() {
+-	fastopen="false"
++	[ "$SS_CONFIG_READY" = 1 ] && return 0
++	local stype bin
+ 	case "$2" in
+-	0) config_file=$CONFIG_FILE && local stype=$(nvram get d_type) ;;
+-	1) config_file=$CONFIG_UDP_FILE && local stype=$(nvram get ud_type) ;;
+-	*) config_file=$CONFIG_SOCK5_FILE && local stype=$(nvram get s5_type) ;;
++	0) config_file=$CONFIG_FILE; stype=$(nvram get d_type) ;;
++	1) config_file=$CONFIG_UDP_FILE; stype=$(nvram get ud_type) ;;
++	*) config_file=$CONFIG_SOCK5_FILE; stype=$(nvram get s5_type) ;;
+ 	esac
+-	local type=$stype
+-	case "$type" in
+-	ss)
+-		lua /etc_ro/ss/genssconfig.lua $1 $3 >$config_file
+-		sed -i 's/\\//g' $config_file
+-		;;
+-	ssr)
+-		lua /etc_ro/ss/genssrconfig.lua $1 $3 >$config_file
+-		sed -i 's/\\//g' $config_file
+-		;;
++	bin=$(find_bin "$stype")
++	[ -x "$bin" ] || { log "找不到 $stype 程序。"; return 1; }
++	case "$stype" in
++	ss) proxy_json_write ss "$config_file" /etc_ro/ss/genssconfig.lua "$1" "$3" ;;
++	ssr) proxy_json_write ssr "$config_file" /etc_ro/ss/genssrconfig.lua "$1" "$3" ;;
+ 	trojan)
+ 		v2ray_enable=1
+-		if [ "$2" = "0" ]; then
+-			lua /etc_ro/ss/gentrojanconfig.lua $1 nat 1080 >$trojan_json_file
+-			sed -i 's/\\//g' $trojan_json_file
++		if [ "$2" = 0 ]; then
++			proxy_json_write trojan "$trojan_json_file" /etc_ro/ss/gentrojanconfig.lua "$1" nat 1080
+ 		else
+-			lua /etc_ro/ss/gentrojanconfig.lua $1 client 10801 >/tmp/trojan-ssr-reudp.json
+-			sed -i 's/\\//g' /tmp/trojan-ssr-reudp.json
+-		fi
+-		;;
+-	v2ray)
++			proxy_json_write trojan /tmp/trojan-ssr-reudp.json /etc_ro/ss/gentrojanconfig.lua "$1" client 10801
++		fi ;;
++	v2ray|xray)
+ 		v2ray_enable=1
+-		if [ "$2" = "1" ]; then
+-			lua /etc_ro/ss/genv2config.lua $1 udp 1080 >/tmp/v2-ssr-reudp.json
+-			sed -i 's/\\//g' /tmp/v2-ssr-reudp.json
++		local generator=/etc_ro/ss/genv2config.lua
++		[ "$stype" = xray ] && generator=/etc_ro/ss/genxrayconfig.lua
++		if [ "$2" = 1 ]; then
++			proxy_json_write "$stype" /tmp/v2-ssr-reudp.json "$generator" "$1" udp 1080
+ 		else
+-			lua /etc_ro/ss/genv2config.lua $1 tcp 1080 >$v2_json_file
+-			sed -i 's/\\//g' $v2_json_file
+-		fi
+-		;;
+-	xray)
+-		v2ray_enable=1
+-		if [ "$2" = "1" ]; then
+-			lua /etc_ro/ss/genxrayconfig.lua $1 udp 1080 >/tmp/v2-ssr-reudp.json
+-			sed -i 's/\\//g' /tmp/v2-ssr-reudp.json
+-		else
+-			lua /etc_ro/ss/genxrayconfig.lua $1 tcp 1080 >$v2_json_file
+-			sed -i 's/\\//g' $v2_json_file
+-		fi
+-		;;	
++			proxy_json_write "$stype" "$v2_json_file" "$generator" "$1" tcp 1080
++		fi ;;
++	socks5) return 0 ;;
++	*) log "未知代理类型。"; return 1 ;;
+ 	esac
+ }
+ 
+@@ -232,7 +222,7 @@
+ 
+ start_redir_tcp() {
+ 	ARG_OTA=""
+-	gen_config_file $GLOBAL_SERVER 0 1080
++	gen_config_file "$GLOBAL_SERVER" 0 1080 || return 1
+ 	stype=$(nvram get d_type)
+ 	local bin=$(find_bin $stype)
+ 	[ ! -f "$bin" ] && log "Main node:Can't find $bin program, can't start!" && return 1
+@@ -261,12 +251,13 @@
+ 		log "$($bin --version 2>&1 | head -1) 启动成功!"
+ 		;;
+ 	v2ray)
+-		run_bin $bin -config $v2_json_file
+-		log "$($bin -version | head -1) 启动成功!"
++		proxy_run_core "$bin" "$v2_json_file" 1080 tcp || return 1
++		log "$($bin version | head -1) 启动成功!"
+ 		;;
+ 	xray)
+-		run_bin $bin -config $v2_json_file
+-		log "$($bin -version | head -1) 启动成功!"
++		run_bin "$bin" run -config "$v2_json_file"
++		proxy_wait_listener "$PROXY_RUN_PID" 1080 tcp || return 1
++		log "$($bin version | head -1) 监听已就绪。"
+ 		;;	
+ 	socks5)
+ 		for i in $(seq 1 $threads); do
+@@ -288,21 +279,22 @@
+ 		case "$utype" in
+ 		ss | ssr)
+ 			ARG_OTA=""
+-			gen_config_file $UDP_RELAY_SERVER 1 1080
++			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
+ 			last_config_file=$CONFIG_UDP_FILE
+ 			pid_file="/var/run/ssr-reudp.pid"
+ 			run_bin $bin -c $last_config_file $ARG_OTA -U -f /var/run/ssr-reudp.pid
+ 			;;
+ 		v2ray)
+-			gen_config_file $UDP_RELAY_SERVER 1
+-			run_bin $bin -config /tmp/v2-ssr-reudp.json
++			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
++			proxy_run_core "$bin" /tmp/v2-ssr-reudp.json 1080 udp || return 1
+ 			;;
+ 		xray)
+-			gen_config_file $UDP_RELAY_SERVER 1
+-			run_bin $bin -config /tmp/v2-ssr-reudp.json
++			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
++			run_bin "$bin" run -config /tmp/v2-ssr-reudp.json
++			proxy_wait_listener "$PROXY_RUN_PID" 1080 udp || return 1
+ 			;;	
+ 		trojan)
+-			gen_config_file $UDP_RELAY_SERVER 1
++			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
+ 			$bin --config /tmp/trojan-ssr-reudp.json >/dev/null 2>&1 &
+ 			run_bin ipt2socks -U -b 0.0.0.0 -4 -s 127.0.0.1 -p 10801 -l 1080
+ 			;;
+@@ -343,9 +335,8 @@
+ 	oversea)
+ 		ipset add gfwlist $dnsserver 2>/dev/null
+ 		mkdir -p /etc/storage/dnsmasq.oversea
+-		sed -i '/dnsmasq-ss/d' /etc/storage/dnsmasq/dnsmasq.conf
+-		sed -i '/dnsmasq.oversea/d' /etc/storage/dnsmasq/dnsmasq.conf
+-		cat >>/etc/storage/dnsmasq/dnsmasq.conf <<EOF
++		proxy_dns_remove_owned
++			cat >>/etc/storage/dnsmasq/dnsmasq.conf <<EOF
+ conf-dir=/etc/storage/dnsmasq.oversea
+ EOF
+ ;;
+@@ -380,36 +371,35 @@
+ start_local() {
+ 	local s5_port=$(nvram get socks5_port)
+ 	local local_server=$(nvram get socks5_enable)
+-	[ "$local_server" == "nil" ] && return 1
++	[ -n "$local_server" ] && [ "$local_server" != "nil" ] || return 0
+ 	[ "$local_server" == "same" ] && local_server=$GLOBAL_SERVER
++	[ -n "$local_server" ] && [ "$local_server" != nil ] || return 0
+ 	local type=$(nvram get s5_type)
+ 	local bin=$(find_bin $type)
+ 	[ ! -f "$bin" ] && log "Global_Socks5:Can't find $bin program, can't start!" && return 1
+ 	case "$type" in
+ 	ss | ssr)
+ 		local name="Shadowsocks"
+-		local bin=$(find_bin ss-local)
++		local bin=$(find_bin "$type-local")
+ 		[ ! -f "$bin" ] && log "Global_Socks5:Can't find $bin program, can't start!" && return 1
+ 		[ "$type" == "ssr" ] && name="ShadowsocksR"
+-		gen_config_file $local_server 3 $s5_port
++		gen_config_file "$local_server" 3 "$s5_port" || return 1
+ 		run_bin $bin -c $CONFIG_SOCK5_FILE -u -f /var/run/ssr-local.pid
+ 		log "Global_Socks5:$name Started!"
+ 		;;
+ 	v2ray)
+-		lua /etc_ro/ss/genv2config.lua $local_server tcp 0 $s5_port >/tmp/v2-ssr-local.json
+-		sed -i 's/\\//g' /tmp/v2-ssr-local.json
+-		run_bin $bin -config /tmp/v2-ssr-local.json
+-		log "Global_Socks5:$($bin -version | head -1) Started!"
++		[ "$SS_CONFIG_READY" = 1 ] || proxy_local_config "$local_server" "$type" "$s5_port" || return 1
++		proxy_run_core "$bin" /tmp/v2-ssr-local.json "$s5_port" tcp || return 1
++		log "Global_Socks5:$($bin version | head -1) Started!"
+ 		;;
+ 	xray)
+-		lua /etc_ro/ss/genxrayconfig.lua $local_server tcp 0 $s5_port >/tmp/v2-ssr-local.json
+-		sed -i 's/\\//g' /tmp/v2-ssr-local.json
+-		run_bin $bin -config /tmp/v2-ssr-local.json
+-		log "Global_Socks5:$($bin -version | head -1) Started!"
++		[ "$SS_CONFIG_READY" = 1 ] || proxy_local_config "$local_server" "$type" "$s5_port" || return 1
++		run_bin "$bin" run -config /tmp/v2-ssr-local.json
++		proxy_wait_listener "$PROXY_RUN_PID" "$s5_port" tcp || return 1
++		log "本地 SOCKS5 监听已就绪。"
+ 		;;
+ 	trojan)
+-		lua /etc_ro/ss/gentrojanconfig.lua $local_server client $s5_port >/tmp/trojan-ssr-local.json
+-		sed -i 's/\\//g' /tmp/trojan-ssr-local.json
++		[ "$SS_CONFIG_READY" = 1 ] || proxy_local_config "$local_server" "$type" "$s5_port" || return 1
+ 		run_bin $bin --config /tmp/trojan-ssr-local.json
+ 		log "Global_Socks5:$($bin --version 2>&1 | head -1) Started!"
+ 		;;
+@@ -424,16 +414,9 @@
+ }
+ 
+ rules() {
+-	[ "$GLOBAL_SERVER" = "nil" ] && return 1
+-	UDP_RELAY_SERVER=$(nvram get udp_relay_server)
+-	if [ "$UDP_RELAY_SERVER" = "same" ]; then
+-		UDP_RELAY_SERVER=$GLOBAL_SERVER
+-	fi
+-	if start_rules; then
+-		return 0
+-	else
+-		return 1
+-	fi
++	[ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ] || return 1
++	# 使用预检通过的节点选择，避免空值被误当作 UDP 节点。
++	start_rules
+ }
+ 
+ start_watchcat() {
+@@ -463,27 +446,35 @@
+ }
+ 
+ # ================================= 启动 SS ===============================
+-ssp_start() { 
+-    ss_enable=`nvram get ss_enable`
+-	if rules; then
+-		cgroups_init
+-		if start_redir_tcp; then
+-			start_redir_udp
+-			#start_AD
+-			start_dns
++ssp_start() {
++	proxy_preflight || return 1
++	cgroups_init
++	if [ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ]; then
++		if ! start_redir_tcp || ! start_redir_udp; then
++			log "代理启动失败，未添加接管规则。"
++			kill_process
++			return 1
+ 		fi
+ 	fi
+-	start_local
++	if ! start_local; then
++		log "本地代理启动失败，未添加接管规则。"
++		kill_process
++		return 1
++	fi
++	if [ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ]; then
++		if ! rules; then
++			log "代理规则建立失败，已撤销本服务规则。"
++			/usr/bin/ss-rules -f
++			kill_process
++			return 1
++		fi
++		start_dns
++	fi
+ 	start_watchcat
+ 	auto_update
+-	ENABLE_SERVER=$(nvram get global_server)
+-	[ "$ENABLE_SERVER" = "nil" ] && return 1
+-	log "启动成功。"
+-	log "内网IP控制为: $lancons"
++	log "代理服务启动完成。"
+ 	nvram set check_mode=0
+-    if [ "$pppoemwan" = 0 ]; then
+-        /usr/bin/detect.sh
+-    fi
++	if [ "$pppoemwan" = 0 ]; then /usr/bin/detect.sh; fi
+ }
+ 
+ # ================================= 关闭SS ===============================
+@@ -494,11 +485,7 @@
+ 	kill -9 $(ps | grep ss-monitor | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+ 	kill_process
+ 	cgroups_cleanup
+-	sed -i '/no-resolv/d' /etc/storage/dnsmasq/dnsmasq.conf
+-	sed -i '/server=127.0.0.1/d' /etc/storage/dnsmasq/dnsmasq.conf
+-	sed -i '/cdn/d' /etc/storage/dnsmasq/dnsmasq.conf
+-	sed -i '/gfwlist/d' /etc/storage/dnsmasq/dnsmasq.conf
+-	sed -i '/dnsmasq.oversea/d' /etc/storage/dnsmasq/dnsmasq.conf
++	proxy_dns_remove_owned
+ 	if [ -f "/etc/storage/dnsmasq-ss.d" ]; then
+ 		rm -f /etc/storage/dnsmasq-ss.d
+ 	fi
+@@ -519,116 +506,109 @@
+ }
+ 
+ kill_process() {
+-	v2ray_process=$(pidof v2ray || pidof xray)
+-	if [ -n "$v2ray_process" ]; then
+-		log "关闭 V2Ray 进程..."
+-		killall v2ray xray >/dev/null 2>&1
+-		kill -9 "$v2ray_process" >/dev/null 2>&1
+-	fi
++	proxy_stop_cores
+ 	ssredir=$(pidof ss-redir)
+ 	if [ -n "$ssredir" ]; then
+ 		log "关闭 ss-redir 进程..."
+ 		killall ss-redir >/dev/null 2>&1
+-		kill -9 "$ssredir" >/dev/null 2>&1
++		killall -9 ss-redir >/dev/null 2>&1
+ 	fi
+ 
+ 	rssredir=$(pidof ssr-redir)
+ 	if [ -n "$rssredir" ]; then
+ 		log "关闭 ssr-redir 进程..."
+ 		killall ssr-redir >/dev/null 2>&1
+-		kill -9 "$rssredir" >/dev/null 2>&1
++		killall -9 ssr-redir >/dev/null 2>&1
+ 	fi
+ 	
+ 	sslocal_process=$(pidof ss-local)
+ 	if [ -n "$sslocal_process" ]; then
+ 		log "关闭 ss-local 进程..."
+ 		killall ss-local >/dev/null 2>&1
+-		kill -9 "$sslocal_process" >/dev/null 2>&1
++		killall -9 ss-local >/dev/null 2>&1
+ 	fi
+ 
+ 	trojandir=$(pidof trojan)
+ 	if [ -n "$trojandir" ]; then
+ 		log "关闭 trojan 进程..."
+ 		killall trojan >/dev/null 2>&1
+-		kill -9 "$trojandir" >/dev/null 2>&1
++		killall -9 trojan >/dev/null 2>&1
+ 	fi
+ 	
+ 	ipt2socks_process=$(pidof ipt2socks)
+ 	if [ -n "$ipt2socks_process" ]; then
+ 		log "关闭 ipt2socks 进程..."
+ 		killall ipt2socks >/dev/null 2>&1
+-		kill -9 "$ipt2socks_process" >/dev/null 2>&1
++		killall -9 ipt2socks >/dev/null 2>&1
+ 	fi
+ 
+ 	socks5_process=$(pidof srelay)
+ 	if [ -n "$socks5_process" ]; then
+ 		log "关闭 socks5 进程..."
+ 		killall srelay >/dev/null 2>&1
+-		kill -9 "$socks5_process" >/dev/null 2>&1
++		killall -9 srelay >/dev/null 2>&1
+ 	fi
+ 
+ 	ssrs_process=$(pidof ssr-server)
+ 	if [ -n "$ssrs_process" ]; then
+ 		log "关闭 ssr-server 进程..."
+ 		killall ssr-server >/dev/null 2>&1
+-		kill -9 "$ssrs_process" >/dev/null 2>&1
++		killall -9 ssr-server >/dev/null 2>&1
+ 	fi
+ 	
+ 	cnd_process=$(pidof chinadns-ng)
+ 	if [ -n "$cnd_process" ]; then
+ 		log "关闭 chinadns-ng 进程..."
+ 		killall chinadns-ng >/dev/null 2>&1
+-		kill -9 "$cnd_process" >/dev/null 2>&1
++		killall -9 chinadns-ng >/dev/null 2>&1
+ 	fi
+ 
+ 	dns2tcp_process=$(pidof dns2tcp)
+ 	if [ -n "$dns2tcp_process" ]; then
+ 		log "关闭 dns2tcp 进程..."
+ 		killall dns2tcp >/dev/null 2>&1
+-		kill -9 "$dns2tcp_process" >/dev/null 2>&1
++		killall -9 dns2tcp >/dev/null 2>&1
+ 	fi
+ 	
+ 	microsocks_process=$(pidof microsocks)
+ 	if [ -n "$microsocks_process" ]; then
+ 		log "关闭 socks5 服务端进程..."
+ 		killall microsocks >/dev/null 2>&1
+-		kill -9 "$microsocks_process" >/dev/null 2>&1
++		killall -9 microsocks >/dev/null 2>&1
+ 	fi
+ }
+ 
+ # ================================= 重启 SS ===============================
+ ressp() {
+-	BACKUP_SERVER=$(nvram get backup_server)
+-	start_redir $BACKUP_SERVER
+-	start_rules $BACKUP_SERVER
+-	start_dns
+-	start_local
+-	start_watchcat
+-	auto_update
+-	ENABLE_SERVER=$(nvram get global_server)
+-	log "备用服务器启动成功"
+-	log "内网IP控制为: $lancons"
+-}
+-
+-case $1 in
+-start)
+-	ssp_start
+-	;;
+-stop)
+-	ssp_close
+-	;;
+-restart)
++	GLOBAL_SERVER=$(nvram get backup_server)
++	[ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ] || return 1
++	SS_CONFIG_READY=0
++	proxy_preflight || return 1
+ 	ssp_close
+ 	ssp_start
+-	;;
+-reserver)
+-	ssp_close
+-	ressp
+-	;;
+-*)
+-	echo "check"
+-	#exit 0
+-	;;
++}
++
++# 父进程持有锁，执行子进程关闭该描述符，避免后台服务长期占锁。
++exec 9>/var/lock/shadowsocks.lock || exit 1
++flock -x 9 || exit 1
++(
++exec 9>&-
++case "$1" in
++start)
++	[ "$(nvram get ss_enable)" = 1 ] || exit 0
++	if proxy_any_core_running; then log "代理核心已运行，修改配置请使用重启。"; exit 0; fi
++	ssp_start ;;
++stop) ssp_close ;;
++restart)
++	if [ "$(nvram get ss_enable)" = 1 ]; then
++		proxy_preflight || exit 1
++		ssp_close
++		ssp_start
++	else
++		ssp_close
++	fi ;;
++reserver) ressp ;;
++check) proxy_preflight ;;
++*) echo "用法：$0 start|stop|restart|reserver|check"; exit 1 ;;
+ esac
+-
+-
++)
+--- a/trunk/user/shadowsocks/ss/genv2config.lua
++++ b/trunk/user/shadowsocks/ss/genv2config.lua
+@@ -1,121 +1,132 @@
+-local cjson = require "cjson"
+-local server_section = arg[1]
+-local proto = arg[2]
+-local local_port = arg[3] or "0"
+-local socks_port = arg[4] or "0"
+-local ssrindext = io.popen("dbus get ssconf_basic_json_" .. server_section)
+-local servertmp = ssrindext:read("*all")
+-local server = cjson.decode(servertmp)
+-local v2ray = {
+-log = {
+-	-- error = "/var/ssrplus.log",
+-	loglevel = "warning"
+-},
+-	-- 传入连接
+-	inbound = (local_port ~= "0") and {
+-		port = local_port,
+-		protocol = "dokodemo-door",
+-		settings = {
+-			network = proto,
+-			followRedirect = true
+-		},
+-		sniffing = {
+-			enabled = true,
+-			destOverride = { "http", "tls" }
+-		}
+-	} or nil,
+-	-- 开启 socks 代理
+-	inboundDetour = (proto == "tcp" and socks_port ~= "0") and {
+-		{
+-		protocol = "socks",
+-		port = socks_port,
+-			settings = {
+-				auth = "noauth",
+-				udp = true
+-			}
+-		}
+-	} or nil,
+-	-- 传出连接
+-	outbound = {
+-		protocol = "vmess",
+-		settings = {
+-			vnext = {
+-				{
+-					address = server.server,
+-					port = tonumber(server.server_port),
+-					users = {
+-						{
+-							id = server.vmess_id,
+-							alterId = tonumber(server.alter_id),
+-							security = server.security
+-						}
+-					}
+-				}
+-			}
+-		},
+-	-- 底层传输配置
+-		streamSettings = {
+-			network = server.transport or "tcp",
+-			security = (server.tls == '1') and "tls" or "none",
+-			tlsSettings = {allowInsecure = (server.insecure ~= "0") and true or false,serverName=server.tls_host,},
+-		tcpSettings = (server.transport == "tcp") and {
+-			header = {
+-				type = server.tcp_guise,
+-				request = {
+-					path = {server.http_path} or {"/"},
+-					headers = {Host = {server.http_host} or {}}
+-				} or {}
+-			}
+-        } or nil,
+-			kcpSettings = (server.transport == "kcp") and {
+-				mtu = tonumber(server.mtu),
+-				tti = tonumber(server.tti),
+-				uplinkCapacity = tonumber(server.uplink_capacity),
+-				downlinkCapacity = tonumber(server.downlink_capacity),
+-				congestion = (server.congestion == "1") and true or false,
+-				readBufferSize = tonumber(server.read_buffer_size),
+-				writeBufferSize = tonumber(server.write_buffer_size),
+-				header = {
+-					type = server.kcp_guise
+-				}
+-			} or nil,
+-			wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host or server.tls_host) and {
+-				-- ws
+-				path = server.ws_path,
+-				headers = (server.ws_host or server.tls_host) and {
+-					-- headers
+-					Host = server.ws_host or server.tls_host
+-				} or nil
+-			} or nil,
+-			grpcSettings = (server.transport == "grpc") and (server.grpc_path ~= nil) and {
+-				serviceName = server.grpc_path
+-			} or nil,
+-			httpSettings = (server.transport == "h2") and {
+-				path = server.h2_path,
+-				host = server.h2_host,
+-			} or nil,
+-			quicSettings = (server.transport == "quic") and {
+-				security = server.quic_security,
+-				key = server.quic_key,
+-				header = {
+-					type = server.quic_guise
+-				}
+-			} or nil
+-		},
+-		mux = {
+-			enabled = (server.mux == "1") and true or false,
+-			concurrency = tonumber(server.concurrency)
+-		}
+-	},
+-
+-	-- 额外传出连接
+-	outboundDetour = {
+-		{
+-			protocol = "freedom",
+-			tag = "direct",
+-			settings = { keep = "" }
+-		}
+-	}
+-}
+-
+-print(cjson.encode(v2ray))
++local cjson = require "cjson"
++local server_section = arg[1] or ""
++if not server_section:match("^%d+$") or #server_section > 10 then io.stderr:write("节点编号无效\n"); os.exit(1) end
++local proto = arg[2]
++local local_port = arg[3] or "0"
++local socks_port = arg[4] or "0"
++local ssrindext = io.popen("dbus get ssconf_basic_json_" .. server_section)
++local servertmp = ssrindext:read("*all")
++ssrindext:close()
++local server = cjson.decode(servertmp)
++local v2ray = {
++log = {
++	-- error = "/var/ssrplus.log",
++	loglevel = "warning"
++},
++	-- 传入连接
++	inbound = (local_port ~= "0") and {
++		port = local_port,
++		protocol = "dokodemo-door",
++		settings = {
++			network = proto,
++			followRedirect = true
++		},
++		sniffing = {
++			enabled = true,
++			destOverride = { "http", "tls" }
++		}
++	} or nil,
++	-- 开启 socks 代理
++	inboundDetour = (proto == "tcp" and socks_port ~= "0") and {
++		{
++		protocol = "socks",
++		port = socks_port,
++			settings = {
++				auth = "noauth",
++				udp = true
++			}
++		}
++	} or nil,
++	-- 传出连接
++	outbound = {
++		protocol = "vmess",
++		settings = {
++			vnext = {
++				{
++					address = server.server,
++					port = tonumber(server.server_port),
++					users = {
++						{
++							id = server.vmess_id,
++							alterId = tonumber(server.alter_id),
++							security = server.security
++						}
++					}
++				}
++			}
++		},
++	-- 底层传输配置
++		streamSettings = {
++			network = server.transport or "tcp",
++			security = (server.tls == '1') and "tls" or "none",
++			tlsSettings = {useSystemCA = true,allowInsecure = (server.insecure == "1" or server.insecure == 1 or server.insecure == true),serverName=server.tls_host,},
++		tcpSettings = (server.transport == "tcp") and {
++			header = {
++				type = server.tcp_guise,
++				request = {
++					path = {server.http_path} or {"/"},
++					headers = {Host = {server.http_host} or {}}
++				} or {}
++			}
++        } or nil,
++			kcpSettings = (server.transport == "kcp") and {
++				mtu = tonumber(server.mtu),
++				tti = tonumber(server.tti),
++				uplinkCapacity = tonumber(server.uplink_capacity),
++				downlinkCapacity = tonumber(server.downlink_capacity),
++				congestion = (server.congestion == "1") and true or false,
++				readBufferSize = tonumber(server.read_buffer_size),
++				writeBufferSize = tonumber(server.write_buffer_size),
++				header = {
++					type = server.kcp_guise
++				}
++			} or nil,
++			wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host or server.tls_host) and {
++				-- ws
++				path = server.ws_path,
++				headers = (server.ws_host or server.tls_host) and {
++					-- headers
++					Host = server.ws_host or server.tls_host
++				} or nil
++			} or nil,
++			grpcSettings = (server.transport == "grpc") and (server.grpc_path ~= nil) and {
++				serviceName = server.grpc_path
++			} or nil,
++			httpSettings = (server.transport == "h2") and {
++				path = server.h2_path,
++				host = server.h2_host,
++			} or nil,
++			quicSettings = (server.transport == "quic") and {
++				security = server.quic_security,
++				key = server.quic_key,
++				header = {
++					type = server.quic_guise
++				}
++			} or nil
++		},
++		mux = {
++			enabled = (server.mux == "1") and true or false,
++			concurrency = tonumber(server.concurrency)
++		}
++	},
++
++	-- 额外传出连接
++	outboundDetour = {
++		{
++			protocol = "freedom",
++			tag = "direct",
++			settings = { keep = "" }
++		}
++	}
++}
++
++-- 新旧核心均接受数组形式，避免新版忽略旧单数字段。
++local incoming = {}
++if v2ray.inbound then incoming[#incoming+1] = v2ray.inbound end
++for _, value in ipairs(v2ray.inboundDetour or {}) do incoming[#incoming+1] = value end
++if #incoming == 0 then io.stderr:write("没有监听端口\n"); os.exit(1) end
++local outgoing = {v2ray.outbound}
++for _, value in ipairs(v2ray.outboundDetour or {}) do outgoing[#outgoing+1] = value end
++v2ray.inbounds, v2ray.outbounds = incoming, outgoing
++v2ray.inbound, v2ray.inboundDetour, v2ray.outbound, v2ray.outboundDetour = nil, nil, nil, nil
++print(cjson.encode(v2ray))
+--- a/trunk/user/shadowsocks/ss/genxrayconfig.lua
++++ b/trunk/user/shadowsocks/ss/genxrayconfig.lua
+@@ -1,133 +1,116 @@
+ local cjson = require "cjson"
+-local server_section = arg[1]
+-local proto = arg[2]
+-local local_port = arg[3] or "0"
+-local socks_port = arg[4] or "0"
+-local ssrindext = io.popen("dbus get ssconf_basic_json_" .. server_section)
+-local servertmp = ssrindext:read("*all")
+-local server = cjson.decode(servertmp)
+-local v2ray = {
+-	log = {
+-		-- error = "/var/ssrplus.log",
+-		loglevel = "warning"
+-	},
+-	-- 传入连接
+-	inbound = (local_port ~= "0") and {
+-		port = local_port,
+-		protocol = "dokodemo-door",
+-		settings = {
+-			network = proto,
+-			followRedirect = true
+-		},
+-		sniffing = {
+-			enabled = true,
+-			destOverride = { "http", "tls" }
+-		}
+-	} or nil,
+-	-- 开启 socks 代理
+-	inboundDetour = (proto == "tcp" and socks_port ~= "0") and {
+-		{
+-		protocol = "socks",
+-		port = socks_port,
+-			settings = {
+-				auth = "noauth",
+-				udp = true
+-			}
+-		}
+-	} or nil,
+-	-- 传出连接
+-	outbound = {
+-		protocol = "vless",
+-		settings = {
+-			vnext = {
+-				{
+-					address = server.server,
+-					port = tonumber(server.server_port),
+-					users = {
+-						{
+-							id = server.vmess_id,
+-							flow = (server.flow == '1') and "xtls-rprx-direct" or ((server.flow == '2') and "xtls-rprx-splice" or ""),
+-							level = tonumber(server.alter_id),
+-							encryption = server.security
+-						}
+-					}
+-				}
+-			}
+-		},
+-	-- 底层传输配置
+-		streamSettings = {
+-			network = server.transport,
+-			security = (server.tls == '1') and "tls" or ((server.tls == '2') and "xtls" or "none"),
+-			tlsSettings = (server.tls == '1') and 
+-			{
+-				allowInsecure = (server.insecure ~= "0") and true or false,
+-				serverName=server.tls_host
+-			} or nil,
+ 
+-			xtlsSettings = (server.tls == '2') and
+-			{
+-				allowInsecure = (server.insecure ~= "0") and true or false,
+-				serverName = server.tls_host
+-			} or nil,
+-		        tcpSettings = (server.transport == "tcp" and server.tls ~= '2') and {
+-				header = {
+-					type = server.tcp_guise, --伪装
+-					request = {
+-						path = server.http_path or {"/"},
+-						headers = {
+-							Host = server.http_host or {}
+-						}
+-					} or {}
+-				}
+-			} or nil,
+-			kcpSettings = (server.transport == "kcp") and {
+-				mtu = tonumber(server.mtu),
+-				tti = tonumber(server.tti),
+-				uplinkCapacity = tonumber(server.uplink_capacity),
+-				downlinkCapacity = tonumber(server.downlink_capacity),
+-				congestion = (server.congestion == "1") and true or false,
+-				readBufferSize = tonumber(server.read_buffer_size),
+-				writeBufferSize = tonumber(server.write_buffer_size),
+-				header = {
+-					type = server.kcp_guise
+-				}
+-			} or nil,
+-			wsSettings = (server.transport == "ws") and (server.ws_path ~= nil or server.ws_host ~= nil) and {
+-				path = server.ws_path,
+-				headers = (server.ws_host ~= nil) and {
+-					Host = server.ws_host
+-				} or nil,
+-			} or nil,
+-			grpcSettings = (server.transport == "grpc") and (server.grpc_path ~= nil) and {
+-				serviceName = server.grpc_path
+-			} or nil,
+-			httpSettings = (server.transport == "h2") and {
+-				path = server.h2_path,
+-				host = server.h2_host,
+-			} or nil,
+-			quicSettings = (server.transport == "quic") and {
+-				security = server.quic_security,
+-				key = server.quic_key,
+-				header = {
+-					type = server.quic_guise
+-				}
+-			} or nil
+-		},
+-		mux = {
+-			enabled = (server.mux == "1") and true or false,
+-			concurrency = tonumber(server.concurrency)
+-		}
+-	},
++local function fail(message)
++    io.stderr:write("Xray 配置错误：" .. message .. "\n")
++    os.exit(1)
++end
+ 
+-	-- 额外传出连接
+-	outboundDetour = {
+-		{
+-			protocol = "freedom",
+-			tag = "direct",
+-			settings = { keep = "" }
+-		}
+-	}
++local section = arg[1] or ""
++if not section:match("^%d+$") or #section > 10 then
++    fail("节点编号无效")
++end
++local proto = arg[2] or "tcp"
++if proto ~= "tcp" and proto ~= "udp" then fail("入站类型无效") end
++local function port(value, allow_zero)
++    local n = tonumber(value)
++    if not n or n ~= math.floor(n) or n > 65535 or n < (allow_zero and 0 or 1) then
++        fail("端口必须为有效整数")
++    end
++    return n
++end
++local local_port = port(arg[3] or "0", true)
++local socks_port = port(arg[4] or "0", true)
++local input = io.popen("dbus get ssconf_basic_json_" .. section)
++if not input then fail("无法读取节点") end
++local raw = input:read("*all")
++input:close()
++local ok, server = pcall(cjson.decode, raw)
++if not ok or type(server) ~= "table" then fail("节点不是有效 JSON 对象") end
++local function text(value, fallback)
++    if value == nil or value == cjson.null then return fallback end
++    if type(value) ~= "string" and type(value) ~= "number" then fail("字段类型无效") end
++    return tostring(value)
++end
++local function enabled(value)
++    return value == true or value == 1 or value == "1" or value == "true" or value == "on"
++end
++local function list(value, fallback)
++    if value == nil or value == cjson.null or value == "" then return fallback end
++    if type(value) == "string" then return {value} end
++    if type(value) ~= "table" or #value == 0 then fail("列表字段无效") end
++    for _, item in ipairs(value) do if type(item) ~= "string" then fail("列表必须为字符串") end end
++    return value
++end
++local address = text(server.server, "")
++if address == "" or address:find("[%z\1-\32]") then fail("服务器地址无效") end
++local id = text(server.vmess_id, "")
++if id == "" then fail("缺少用户 ID") end
++local transport = text(server.transport, "tcp")
++local tls = text(server.tls, "0")
++local flow = text(server.flow, "0")
++-- 已移除的协议不能静默改成另一种；须与服务端一起迁移。
++if tls == "2" or flow == "1" or flow == "2" then
++    fail("旧 XTLS/direct/splice 已不受支持，请与服务端一起迁移到 TLS + Vision")
++end
++if transport == "h2" or transport == "quic" then
++    fail("旧 HTTP/2 或 QUIC 传输已移除，请先迁移服务端，原节点配置已保留")
++end
++if not ({tcp=true, ws=true, grpc=true, kcp=true})[transport] then fail("不支持的传输方式") end
++if tls ~= "0" and tls ~= "1" then fail("不支持的传输安全类型") end
++if flow ~= "0" and flow ~= "" and flow ~= "3" and flow ~= "xtls-rprx-vision" then fail("不支持的流控") end
++local vision = flow == "3" or flow == "xtls-rprx-vision"
++if vision and (tls ~= "1" or transport ~= "tcp") then fail("Vision 需要 TCP 与 TLS") end
++if vision and enabled(server.mux) then fail("Vision 不能同时启用旧 Mux") end
++local stream = {network=transport, security=tls == "1" and "tls" or "none"}
++if tls == "1" then
++    if enabled(server.insecure) then
++        fail("新版核心已移除跳过证书验证，请先为服务端配置有效证书，原节点已保留")
++    end
++    -- 延用路由器的受信 CA；始终验证服务端证书和主机名。
++    stream.tlsSettings = {useSystemCA=true, serverName=text(server.tls_host, "")}
++end
++if transport == "tcp" then
++    local guise = text(server.tcp_guise, "none")
++    if guise ~= "none" and guise ~= "http" then fail("TCP 伪装类型无效") end
++    stream.tcpSettings = {header={type=guise}}
++    if guise == "http" then
++        stream.tcpSettings.header.request = {path=list(server.http_path, {"/"}), headers={Host=list(server.http_host, {address})}}
++    end
++elseif transport == "ws" then
++    stream.wsSettings = {path=text(server.ws_path, "/"), host=text(server.ws_host, "")}
++elseif transport == "grpc" then
++    stream.grpcSettings = {serviceName=text(server.grpc_path, "")}
++elseif transport == "kcp" then
++    stream.kcpSettings = {
++        mtu=tonumber(server.mtu), tti=tonumber(server.tti),
++        uplinkCapacity=tonumber(server.uplink_capacity), downlinkCapacity=tonumber(server.downlink_capacity),
++        congestion=enabled(server.congestion), readBufferSize=tonumber(server.read_buffer_size),
++        writeBufferSize=tonumber(server.write_buffer_size), header={type=text(server.kcp_guise, "none")}
++    }
++end
++local inbounds = {}
++if local_port ~= 0 then
++    inbounds[#inbounds+1] = {
++        listen="0.0.0.0", port=local_port, protocol="dokodemo-door", tag="redirect-" .. proto,
++        settings={network=proto, followRedirect=true},
++        streamSettings=proto == "udp" and {sockopt={tproxy="tproxy"}} or nil,
++        sniffing={enabled=true, destOverride={"http", "tls"}}
++    }
++end
++if proto == "tcp" and socks_port ~= 0 then
++    inbounds[#inbounds+1] = {listen="0.0.0.0", port=socks_port, protocol="socks", tag="socks", settings={auth="noauth", udp=true}}
++end
++if #inbounds == 0 then fail("至少需要一个监听端口") end
++local user = {id=id, encryption=text(server.security, "none")}
++if user.encryption == "" then user.encryption = "none" end
++if vision then user.flow = "xtls-rprx-vision" end
++-- 使用数组形式；保留 JSON 自身的转义，不再通过 sed 删除反斜线。
++local config = {
++    log={loglevel="warning"}, inbounds=inbounds,
++    outbounds={
++        {protocol="vless", tag="proxy", settings={vnext={{address=address, port=port(server.server_port, false), users={user}}}},
++         streamSettings=stream, mux={enabled=enabled(server.mux), concurrency=tonumber(server.concurrency) or 8}},
++        {protocol="freedom", tag="direct"}
++    }
+ }
+-
+-print(cjson.encode(v2ray))
+-
++print(cjson.encode(config))
+--- /dev/null
++++ b/trunk/user/shadowsocks/ss/proxy-config.sh
+@@ -0,0 +1,170 @@
++#!/bin/sh
++# 先生成并验证候选配置，全部通过后才允许停止旧服务或接管流量。
++
++proxy_json_write() {
++	local kind="$1" target="$2" generator="$3" tmp error bin work
++	shift 3
++	case "$1" in ''|*[!0-9]*) log "节点编号无效，保留当前配置。"; return 1 ;; esac
++	if [ -n "$SS_PENDING_DIR" ]; then target="$SS_PENDING_DIR/${target##*/}"; fi
++	umask 077
++	work=$(mktemp -d "${target}.XXXXXX") || return 1
++	# 核心按扩展名识别配置，随机目录内保留 .json 文件名。
++	tmp="$work/config.json"
++	error="$work/error"
++	if ! lua "$generator" "$@" >"$tmp" 2>"$error" ||
++	   ! lua -e 'local c=require("cjson"); local t=c.decode(io.read("*a")); assert(type(t)=="table")' <"$tmp" 2>>"$error"; then
++		log "代理配置生成失败：$(head -c 1024 "$error")"
++		rm -f "$tmp" "$error"
++		rmdir "$work"
++		return 1
++	fi
++	case "$kind" in
++	xray|v2ray)
++		bin=$(find_bin "$kind")
++		if [ ! -x "$bin" ]; then
++			log "找不到 $kind 程序，未更改流量接管。"
++			rm -f "$tmp" "$error"
++			rmdir "$work"
++			return 1
++		fi
++		case "${bin##*/}" in
++		xray) "$bin" run -test -format json -config "$tmp" >"$error" 2>&1 ;;
++		*) "$bin" test -format json -config "$tmp" >"$error" 2>&1 ;;
++		esac
++		if [ "$?" != 0 ]; then
++			log "代理配置检查失败：$(tail -c 1536 "$error")"
++			rm -f "$tmp" "$error"
++			rmdir "$work"
++			return 1
++		fi
++		;;
++	esac
++	if ! mv -f "$tmp" "$target"; then rm -f "$tmp" "$error"; rmdir "$work"; return 1; fi
++	rm -f "$error"
++	rmdir "$work"
++}
++
++proxy_run_core() {
++	local bin="$1" config="$2" port="$3" proto="$4"
++	run_bin "$bin" run -config "$config"
++	proxy_wait_listener "$PROXY_RUN_PID" "$port" "$proto"
++}
++
++proxy_core_owned() {
++	local pid="$1"
++	[ -r "/proc/$pid/cmdline" ] || return 1
++	tr '\000' '\n' <"/proc/$pid/cmdline" | grep -qxE '/tmp/(v2-redir|v2-ssr-reudp|v2-ssr-local)\.json'
++}
++
++proxy_stop_cores() {
++	local pid n
++	# 只停止本服务配置启动的核心，保留用户独立运行的 Xray/V2Ray。
++	for pid in $(pidof v2ray 2>/dev/null; pidof xray 2>/dev/null); do
++		case "$pid" in ''|*[!0-9]*) continue ;; esac
++		proxy_core_owned "$pid" || continue
++		kill -TERM "$pid" 2>/dev/null
++		n=0
++		while [ "$n" -lt 20 ] && proxy_core_owned "$pid"; do
++			usleep 100000
++			n=$((n + 1))
++		done
++		if proxy_core_owned "$pid"; then kill -KILL "$pid" 2>/dev/null; fi
++	done
++}
++
++proxy_any_core_running() {
++	local pid
++	for pid in $(pidof v2ray 2>/dev/null; pidof xray 2>/dev/null); do
++		case "$pid" in ''|*[!0-9]*) continue ;; esac
++		proxy_core_owned "$pid" && return 0
++	done
++	return 1
++}
++
++proxy_dns_remove_owned() {
++	local config=/etc/storage/dnsmasq/dnsmasq.conf tmp
++	[ -f "$config" ] || return 0
++	tmp=$(mktemp "${config}.XXXXXX") || return 1
++	# 按完整配置项匹配，不能因一行包含 cdn 或 gfwlist 就删掉。
++	awk '
++		$0 == "conf-dir=/etc/storage/dnsmasq.oversea" {next}
++		$0 == "conf-file=/etc/storage/dnsmasq-ss.d" {next}
++		$0 == "conf-dir=/tmp/cdn" {next}
++		{print}' "$config" >"$tmp" || { rm -f "$tmp"; return 1; }
++	cat "$tmp" >"$config"
++	local result=$?
++	rm -f "$tmp"
++	return "$result"
++}
++
++proxy_local_config() {
++	local node="$1" type="$2" port="$3"
++	case "$type" in
++	xray) proxy_json_write xray /tmp/v2-ssr-local.json /etc_ro/ss/genxrayconfig.lua "$node" tcp 0 "$port" ;;
++	v2ray) proxy_json_write v2ray /tmp/v2-ssr-local.json /etc_ro/ss/genv2config.lua "$node" tcp 0 "$port" ;;
++	trojan) proxy_json_write trojan /tmp/trojan-ssr-local.json /etc_ro/ss/gentrojanconfig.lua "$node" client "$port" ;;
++	ss|ssr) gen_config_file "$node" 3 "$port" ;;
++	*) return 0 ;;
++	esac
++}
++
++proxy_pending_remove() {
++	case "$SS_PENDING_DIR" in /tmp/ssr-preflight.*) rm -rf "$SS_PENDING_DIR" ;; esac
++	SS_PENDING_DIR=""
++}
++
++proxy_preflight() {
++	local node type bin f
++	[ "$SS_CONFIG_READY" = 1 ] && return 0
++	SS_PENDING_DIR=$(mktemp -d /tmp/ssr-preflight.XXXXXX) || return 1
++	chmod 700 "$SS_PENDING_DIR"
++	UDP_RELAY_SERVER=$(nvram get udp_relay_server)
++	[ "$UDP_RELAY_SERVER" = same ] && UDP_RELAY_SERVER="$GLOBAL_SERVER"
++	[ -n "$UDP_RELAY_SERVER" ] || UDP_RELAY_SERVER=nil
++	if [ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ]; then
++		if ! gen_config_file "$GLOBAL_SERVER" 0 1080; then proxy_pending_remove; return 1; fi
++		if [ "$UDP_RELAY_SERVER" != nil ] && ! gen_config_file "$UDP_RELAY_SERVER" 1 1080; then
++			proxy_pending_remove; return 1
++		fi
++	fi
++	node=$(nvram get socks5_enable)
++	[ "$node" = same ] && node="$GLOBAL_SERVER"
++	if [ -n "$node" ] && [ "$node" != nil ]; then
++		if ! proxy_local_config "$node" "$(nvram get s5_type)" "$(nvram get socks5_port)"; then
++			proxy_pending_remove; return 1
++		fi
++	fi
++	# 所有节点检查通过才发布；候选与运行配置均在 /tmp，可原子更名。
++	for f in "$SS_PENDING_DIR"/*.json; do
++		[ -f "$f" ] || continue
++		case "${f##*/}" in
++		shadowsocksr.json|shadowsocksr_u.json|shadowsocksr_s.json|v2-redir.json|tj-redir.json|v2-ssr-reudp.json|trojan-ssr-reudp.json|v2-ssr-local.json|trojan-ssr-local.json) ;;
++		*) proxy_pending_remove; return 1 ;;
++		esac
++		if ! mv -f "$f" "/tmp/${f##*/}"; then proxy_pending_remove; return 1; fi
++	done
++	proxy_pending_remove
++	SS_CONFIG_READY=1
++}
++
++proxy_wait_listener() {
++	local pid="$1" port="$2" proto="$3" n=0 sockets hex
++	case "$pid" in ''|*[!0-9]*) return 1 ;; esac
++	case "$port" in ''|*[!0-9]*) return 1 ;; esac
++	case "$proto" in tcp|udp) ;; *) return 1 ;; esac
++	hex=$(printf '%04X' "$port") || return 1
++	while [ "$n" -lt 100 ]; do
++		kill -0 "$pid" 2>/dev/null || return 1
++		# 按 socket inode 核实端口属于本次子进程，不能把别人的监听算成成功。
++		sockets="$(ls -l /proc/"$pid"/fd 2>/dev/null | sed -n 's/.* -> socket:\[\([0-9]*\)\]$/\1/p' | tr '\n' ' ')"
++		if [ -n "$sockets" ] && awk -v owned=" $sockets" -v port="$hex" -v proto="$proto" '
++			{split($2, addr, ":")}
++			addr[2] == port && ((proto == "tcp" && $4 == "0A") || (proto == "udp" && $4 == "07")) &&
++			index(owned, " " $10 " ") {found=1}
++			END {exit !found}' /proc/net/"$proto" /proc/net/"${proto}6" 2>/dev/null; then return 0; fi
++		usleep 100000
++		n=$((n + 1))
++	done
++	log "代理进程未按时监听 $proto/$port，未启用流量接管。"
++	return 1
++}
+--- a/trunk/user/sing-box/Makefile
++++ b/trunk/user/sing-box/Makefile
+@@ -1,28 +1,29 @@
+ include $(ROOTDIR)/rules.mk
+ 
+ PKG_NAME:=sing-box
+-PKG_VERSION:=1.5.3
+-
+-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+-PKG_SOURCE_URL:=https://codeload.github.com/SagerNet/sing-box/tar.gz/v$(PKG_VERSION)?
+-PKG_HASH:=e050f8a588d92547ba277fc8980af8ede544c345684c20e4b008fbc1b1371fb8
++PKG_VERSION:=1.14.4
++PKG_SOURCE:=sing-box-$(PKG_VERSION)-linux-mipsle-softfloat.tar.gz
++PKG_SOURCE_URL:=https://github.com/SagerNet/sing-box/releases/download/v$(PKG_VERSION)
++PKG_HASH:=4abf94c284462bca0d9d23966b26e5675a2c0137b7945534f0fa1b0fc309b298
++PKG_BINARY_HASH:=2ebe1bea84d0cf34372e03a1ae98ee0b872d208bc451c6e9a8bf835ee584792c
+ 
+ include $(INCLUDE_DIR)/package.mk
+ 
++# 固定官方 MIPS 小端软浮点版本，避免宿主 Go 默认浮点方式改变目标兼容性。
++define Build/Prepare
++	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
++	tar -xzf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
++endef
+ define Build/Configure
+ endef
++define Build/Compile
++	printf '%s  %s\n' '$(PKG_BINARY_HASH)' '$(PKG_BUILD_DIR)/sing-box' | sha256sum -c -
++	test -x '$(PKG_BUILD_DIR)/sing-box'
++endef
++$(eval $(call BuildPackage,sing-box))
++$(STAMP_PREPARED): Makefile
+ 
+-define Build/Compile
+-	(cd $(PKG_BUILD_DIR); \
+-		GOOS=linux GOARCH=mipsle CGO_ENABLED=0 \
+-		go build -v -trimpath -tags "with_gvisor,with_quic,with_utls,with_wireguard,with_clash_api" \
+-		-ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(PKG_VERSION)' -s -w -buildid=" \
+-		./cmd/sing-box; \
+-	)
+-endef
+-
+-$(eval $(call BuildPackage,sing-box))
+-
+-romfs:
++# 仅在原有机型开关选中时内置；默认机型开关不变。
++romfs: $(STAMP_BUILT)
+ 	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
+-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/sing-box $(ROMFSDIR)/usr/bin/sing-box
+\ No newline at end of file
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/sing-box $(ROMFSDIR)/usr/bin/sing-box
+--- a/trunk/user/smartdns/Makefile
++++ b/trunk/user/smartdns/Makefile
+@@ -1,20 +1,28 @@
+ include $(ROOTDIR)/rules.mk
+ 
+ PKG_NAME:=smartdns
+-PKG_VERSION:=1.2023.43
+-
+-PKG_SOURCE_PROTO:=git
+-PKG_SOURCE_URL:=https://www.github.com/pymumu/smartdns.git
+-PKG_SOURCE_VERSION:=1ba6ee7cb98b5b6448bc2a2be318eb3518d4de79
+-PKG_MIRROR_HASH:=a31c1d79ffb253507a1a8e0bb8e6d93fa65efef22a3cdd098400157187bbfe20
++PKG_VERSION:=48.4
++PKG_SOURCE:=smartdns-Release$(PKG_VERSION).tar.gz
++PKG_SOURCE_URL:=https://codeload.github.com/pymumu/smartdns/tar.gz
++PKG_SOURCE_URL_FILE:=refs/tags/Release$(PKG_VERSION)
++PKG_HASH:=b07abba99e921f262ba47588e12f5b36dd849f79c0145542440eb6b7eed80553
+ 
+ include $(INCLUDE_DIR)/package.mk
+ 
++define Build/Prepare
++	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
++	tar -xzf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
++	$(Build/Patch)
++endef
++
++MAKE_FLAGS += VER=Release48.4 NO_GIT_VER=1 WITH_UI=0 WITH_ZLIB=1
++EXTRA_CFLAGS += -ffunction-sections -fdata-sections
++EXTRA_LDFLAGS += -Wl,--gc-sections
+ $(eval $(call BuildPackage,smartdns))
++$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
+ 
+-romfs:
+-	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
++romfs: $(STAMP_BUILT)
++	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin $(ROMFSDIR)/etc_ro
+ 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/smartdns $(ROMFSDIR)/usr/bin/smartdns
+ 	$(INSTALL_BIN) ./smartdns.sh $(ROMFSDIR)/usr/bin/smartdns.sh
+-	$(INSTALL_DIR) $(ROMFSDIR)/etc_ro
+ 	$(INSTALL_DATA) ./conf/*.conf $(ROMFSDIR)/etc_ro/
+--- /dev/null
++++ b/trunk/user/smartdns/patches/010-openssl-no-quic-lock.patch
+@@ -0,0 +1,21 @@
++--- a/src/dns_client/client_tls.c
+++++ b/src/dns_client/client_tls.c
++@@ -327,7 +327,7 @@
++ 	}
++ 
++ #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
++-#if (OPENSSL_VERSION_NUMBER >= 0x30200000L)
+++#if defined(OSSL_QUIC1_VERSION) && !defined(OPENSSL_NO_QUIC)
++ 	if (is_quic) {
++ 		*ssl_ctx = SSL_CTX_new(OSSL_QUIC_client_method());
++ 	} else {
++@@ -335,7 +335,8 @@
++ 	}
++ #else
++ 	if (is_quic) {
++-		return NULL;
+++		/* 当前库未启用 QUIC，退出时仍须释放服务器列表锁。 */
+++		goto errout;
++ 	}
++ 	*ssl_ctx = SSL_CTX_new(TLS_client_method());
++ #endif
+--- a/trunk/user/smartdns/smartdns.sh
++++ b/trunk/user/smartdns/smartdns.sh
+@@ -342,7 +342,7 @@
+     case $action in
+     stop)
+         sed -i '/no-resolv/d' "$dnsmasq_Conf"
+-        sed -i '/server=127.0.0.1#'"$sdns_portd"'/d' "$dnsmasq_Conf"
++        sed -i '/server=127.0.0.1#'"$sdns_ported"'/d' "$dnsmasq_Conf"
+         sed -i '/port=0/d' "$dnsmasq_Conf"
+         if [ "$sdns_enable" = 0 ] ; then
+             [ "$sdns_ported" = "53" ] && logger -t "SmartDNS" "已启用 dnsmasq 域名解析（DNS）功能" 
+@@ -483,6 +483,8 @@
+ Stop_smartdns () {
+     # 【】
+     killall -9 smartdns >/dev/null 2>&1
++    # 未接管过 DNS 时，停止操作不能删除其他服务的 dnsmasq 配置。
++    [ -s "$smartdns_Ini" ] || return 0
+     logger -t "SmartDNS" "结束smartdns进程 ．．．"
+     Change_adbyby
+     Change_dnsmasq
+@@ -542,5 +544,18 @@
+     esac
+     }
+ 
++# 启动前检查冲突，不能先改 DNS 再发现 AdGuardHome 已占用。
++case "$action" in
++start|restart|reset)
++    case "$sdns_port" in ''|*[!0-9]*) logger -t SmartDNS "监听端口无效"; exit 1;; esac
++    [ "$sdns_port" -ge 1 ] && [ "$sdns_port" -le 65535 ] || exit 1
++    if [ "$(nvram get adg_enable)" = 1 ] || pidof AdGuardHome >/dev/null 2>&1; then
++        if [ "$sdns_port" = 53 ] || [ "$sdns_port" = 5335 ] || [ "$snds_redirect" != 0 ]; then
++            logger -t SmartDNS "AdGuardHome 已启用；SmartDNS 需使用独立端口并关闭 DNS 重定向"
++            exit 1
++        fi
++    fi
++    ;;
++esac
+ Read_ini
+ Main
+--- a/trunk/user/transmission/Makefile
++++ b/trunk/user/transmission/Makefile
+@@ -1,64 +1,31 @@
+-SRC_NAME = transmission-3.00
+-SRC_URL = https://github.com/transmission/transmission/releases/download/3.00/transmission-3.00.tar.xz
+-CFLAGS   += -fvisibility=hidden -D_LARGEFILE64_SOURCE -D_LFS64_LARGEFILE -Wno-implicit-fallthrough
++include $(ROOTDIR)/rules.mk
+ 
+-THISDIR = $(shell pwd)
++PKG_NAME:=transmission
++PKG_VERSION:=4.1.4
++PKG_SOURCE:=transmission-$(PKG_VERSION).tar.xz
++PKG_SOURCE_URL:=https://github.com/transmission/transmission/releases/download/$(PKG_VERSION)
++PKG_HASH:=86e7aa020cdf64826447034bc85f4d3b7c848d8c0891d9dc9b9fddfb2c805d22
++CMAKE_BINARY_SUBDIR:=build
+ 
+-all: download_test extract_test config_test
+-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)/build && \
+-	$(MAKE) -C $(SRC_NAME)/build install DESTDIR=$(THISDIR)/install
++include $(INCLUDE_DIR)/package.mk
++include $(INCLUDE_DIR)/cmake.mk
+ 
+-download_test:
+-	( if [ ! -f $(SRC_NAME).tar.xz ]; then \
+-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.xz $(SRC_URL); \
+-	fi )
++# 复用固件的 TLS 和 curl；无桌面界面，仅构建守护进程和远程控制客户端。
++CMAKE_OPTIONS += -DENABLE_DAEMON=ON -DENABLE_CLI=OFF -DENABLE_UTILS=OFF \
++	-DENABLE_GTK=OFF -DENABLE_QT=OFF -DENABLE_MAC=OFF -DENABLE_NLS=OFF \
++	-DENABLE_TESTS=OFF -DINSTALL_DOC=OFF -DINSTALL_WEB=ON -DREBUILD_WEB=OFF \
++	-DWITH_SYSTEMD=OFF -DWITH_INOTIFY=ON -DWITH_CRYPTO=openssl \
++	-DRUN_CLANG_TIDY=OFF -DUSE_SYSTEM_EVENT2=OFF -DUSE_SYSTEM_DEFLATE=OFF \
++	-DUSE_SYSTEM_DHT=OFF -DUSE_SYSTEM_MINIUPNPC=OFF -DUSE_SYSTEM_NATPMP=OFF \
++	-DUSE_SYSTEM_UTP=OFF -DUSE_SYSTEM_B64=OFF -DUSE_SYSTEM_PSL=OFF \
++	-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -static-libstdc++ -static-libgcc -Wl,--gc-sections -Wl,-rpath-link,$(STAGING_DIR)/lib"
++EXTRA_CFLAGS += -ffunction-sections -fdata-sections -fvisibility=hidden
+ 
+-extract_test:
+-	( if [ ! -d $(SRC_NAME) ]; then \
+-		tar -xf $(SRC_NAME).tar.xz; \
+-		patch -p1 -d $(SRC_NAME) < $(SRC_NAME).patch; \
+-		mkdir -p $(SRC_NAME)/third-party/miniupnpc/include/miniupnp ; \
+-		cp -r $(SRC_NAME)/third-party/miniupnpc/*.h $(SRC_NAME)/third-party/miniupnpc/include/miniupnp ; \
+-	fi )
++$(eval $(call BuildPackage,transmission))
++$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
+ 
+-config_test:
+-	( if [ -f ./config_done ]; then \
+-		echo "the same configuration"; \
+-	else \
+-		make configure && touch config_done; \
+-	fi )
+-
+-configure:
+-	( mkdir -p $(SRC_NAME)/build && cd $(SRC_NAME)/build ; \
+-	cmake -DCMAKE_TOOLCHAIN_FILE=$(CONFIG_CMAKE_TOOLCHAIN_FILE) \
+-		  -DCMAKE_INSTALL_PREFIX=/usr \
+-		  -DCMAKE_BUILD_TYPE=Release \
+-		  -DENABLE_CLI=OFF \
+-		  -DENABLE_DAEMON=ON \
+-		  -DENABLE_GTK=OFF \
+-		  -DENABLE_LIGHTWEIGHT=ON \
+-		  -DENABLE_NLS=OFF \
+-		  -DENABLE_QT=OFF \
+-		  -DENABLE_TESTS=OFF \
+-		  -DINSTALL_DOC=OFF \
+-		  -DUSE_SYSTEM_MINIUPNPC=OFF \
+-		  -DUSE_SYSTEM_NATPMP=OFF \
+-		  -DUSE_SYSTEM_UTP=OFF \
+-		  -DWITH_SYSTEMD=OFF \
+-		  -DWITH_INOTIFY=ON \
+-		  -DWITH_CRYPTO=openssl \
+-		  .. \
+-	)
+-
+-clean:
+-	if [ -f $(SRC_NAME)/Makefile ] ; then \
+-		$(MAKE) -C $(SRC_NAME) clean ; \
+-	fi ; \
+-	rm -f config_done
+-	rm -rf install
+-
+-romfs:
+-	cp -rf $(THISDIR)/install/usr/share/transmission $(INSTALLDIR)/usr/share
+-	rm -f $(INSTALLDIR)/usr/share/transmission/web/LICENSE
+-	$(ROMFSINST) $(THISDIR)/install/usr/bin/transmission-daemon /usr/bin/transmission-daemon
+-	$(ROMFSINST) -p +x /usr/bin/transmission.sh
++romfs: $(STAMP_BUILT)
++	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin $(ROMFSDIR)/usr/share/transmission/web
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/daemon/transmission-daemon $(ROMFSDIR)/usr/bin/transmission-daemon
++	$(INSTALL_BIN) ./transmission.sh $(ROMFSDIR)/usr/bin/transmission.sh
++	$(CP) $(PKG_BUILD_DIR)/web/public_html/. $(ROMFSDIR)/usr/share/transmission/web/
+--- a/trunk/user/transmission/transmission.sh
++++ b/trunk/user/transmission/transmission.sh
+@@ -13,6 +13,10 @@
+ SVC_PATH="/usr/bin/transmission-daemon"
+ DIR_LINK="/mnt/transmission"
+ 
++# 同一服务的启停串行执行；守护进程不继承锁文件描述符。
++exec 9>/var/run/transmission-service.lock || exit 1
++flock -x 9 || exit 1
++
+ func_start()
+ {
+ 	# Make sure already running
+@@ -27,7 +31,8 @@
+ 		return 1
+ 	fi
+ 
+-	export TR_CURL_SSL_NO_VERIFY=1
++	# 使用正常证书校验，不能对全部 HTTPS 下载和 Tracker 关闭认证。
++	unset TR_CURL_SSL_NO_VERIFY TR_CURL_PROXY_SSL_NO_VERIFY
+ 	
+ 	DIR_CFG="${DIR_LINK}/config"
+ 	DIR_DL1="`cd \"$DIR_LINK\"; dirname \"$(pwd -P)\"`/Downloads"
+@@ -50,9 +55,17 @@
+ 	if [ ! -f "$DIR_CFG/settings.json" ] ; then
+ 		tr_user=`nvram get http_username`
+ 		tr_pass=`nvram get http_passwd`
+-		$SVC_PATH -w "$DIR_DL1" --incomplete-dir "$DIR_DL2" -c "$DIR_DL3" --no-incomplete-dir -y -L 90 -l 30 --no-utp -M -t -u "$tr_user" -v "$tr_pass" -P "$tr_pport" -p "$tr_rport" -x /var/run/transmission.pid -d 2>/tmp/settings.json
+-		sed -i 's|"umask": 18,|"umask": 0,|g' /tmp/settings.json
+-		mv /tmp/settings.json "$DIR_CFG/settings.json"
++		# 默认配置先在目标盘生成，再原子替换，失败时不留下半份配置。
++		umask 077
++		tr_tmp=$(mktemp "$DIR_CFG/.settings.json.XXXXXX") || return 1
++		$SVC_PATH -w "$DIR_DL1" --incomplete-dir "$DIR_DL2" -c "$DIR_DL3" --no-incomplete-dir -y -L 90 -l 30 --no-utp -M -t -u "$tr_user" -v "$tr_pass" -P "$tr_pport" -p "$tr_rport" -x /var/run/transmission.pid -d 2>"$tr_tmp" 9>&-
++		if [ $? -ne 0 ] || [ ! -s "$tr_tmp" ]; then
++			rm -f "$tr_tmp"
++			logger -t "$SVC_NAME" "生成默认配置失败，未启动服务"
++			return 1
++		fi
++		sed -i 's|"umask": 18,|"umask": 0,|g' "$tr_tmp"
++		mv "$tr_tmp" "$DIR_CFG/settings.json" || return 1
+ 	fi
+ 	
+ 	svc_user=""
+@@ -66,7 +79,7 @@
+ 		svc_user=" -c nobody"
+ 	fi
+ 	
+-	start-stop-daemon -S -N $SVC_PRIORITY$svc_user -x $SVC_PATH -- -g "$DIR_CFG" -P "$tr_pport" -p "$tr_rport" -e "${DIR_LINK}/transmission.log"
++	start-stop-daemon -S -N $SVC_PRIORITY$svc_user -x $SVC_PATH -- -g "$DIR_CFG" -P "$tr_pport" -p "$tr_rport" -e "${DIR_LINK}/transmission.log" 9>&-
+ 	
+ 	if [ $? -eq 0 ] ; then
+ 		echo "[  OK  ]"
+@@ -99,7 +112,7 @@
+ 	tr_pid=`pidof transmission-daemon`
+ 	if [ -n "$tr_pid" ] ; then
+ 		# force kill (hungup?)
+-		kill -9 "$tr_pid"
++		killall -KILL transmission-daemon >/dev/null 2>&1
+ 		sleep 1
+ 		echo "[KILLED]"
+ 		logger -t "$SVC_NAME" "Cannot stop: Timeout reached! Force killed."
+--- a/trunk/user/www/n56u_ribbon_fixed/Shadowsocks.asp
++++ b/trunk/user/www/n56u_ribbon_fixed/Shadowsocks.asp
+@@ -1197,6 +1197,7 @@
+ 				document.getElementById('ssp_type').value = "xray";
+ 				document.getElementById('ssp_type').dispatchEvent(event);
+ 				document.getElementById('v2_security').value = queryParam.encryption || "none";
++				if (queryParam.flow === 'xtls-rprx-vision') document.getElementById('v2_flow').value = '3';
+ 				document.getElementById('v2_transport').value = queryParam.type || "tcp";
+ 				document.getElementById('v2_transport').dispatchEvent(event);
+ 				
+@@ -1221,6 +1222,7 @@
+ 					document.getElementById('v2_h2_path').value = queryParam.path;
+ 				}
+ 				
++				if (queryParam.flow === 'xtls-rprx-vision') document.getElementById('v2_flow').value = '3';
+ 				if (queryParam.security == "xtls") {
+ 					document.getElementById('v2_tls').value = '2';
+ 					if (queryParam.flow != undefined) {
+@@ -1313,7 +1315,25 @@
+ 				nodeData.appendChild(tr);
+ 			}
+ 		}
++		// 服务端协议必须同步迁移，不能把旧协议静默改成另一种。
++		function xrayCompatibilityError(type, transport, tls, flow, mux, insecure) {
++			if (type !== "xray") return "";
++			if (tls === "1" && insecure)
++				return "新版 Xray 已移除跳过证书验证，请先为服务端配置有效证书；原节点不会被删除。";
++			if (tls === "2" || flow === "1" || flow === "2")
++				return "新版 Xray 不再支持旧 XTLS/direct/splice，请先与服务端一起迁移；原节点不会被删除。";
++			if (transport === "h2" || transport === "quic")
++				return "新版 Xray 已移除旧 HTTP/2、QUIC 传输，请先迁移服务端；原节点不会被删除。";
++			if (flow === "3" && (tls !== "1" || transport !== "tcp" || mux === "1"))
++				return "Vision 需要 TCP、TLS，且不能同时启用旧 Mux。";
++			return "";
++		}
+ 		function add_ss() {
++			var compatibility = xrayCompatibilityError(document.getElementById("ssp_type").value,
++				document.getElementById("v2_transport").value, document.getElementById("v2_tls").value,
++				document.getElementById("v2_flow").value, document.getElementById("v2_mux").value,
++				document.getElementById("ssp_insecure").checked);
++			if (compatibility) { alert(compatibility); return false; }
+ 			showhide_div('vpnc_settings', 0);
+ 			var type = document.getElementById("ssp_type").value;
+ 			if (type == "ss") {
+@@ -1350,7 +1370,7 @@
+ 					alias: document.getElementById("ssp_name").value,
+ 					server: document.getElementById("ssp_server").value,
+ 					server_port: document.getElementById("ssp_prot").value,
+-					insecure: document.getElementById("ssp_insecure").value,
++					insecure: document.getElementById("ssp_insecure").checked ? "1" : "0",
+ 					mux: document.getElementById("v2_mux").value,
+ 					security: document.getElementById("v2_security").value,
+ 					vmess_id: document.getElementById("v2_vmess_id").value,
+@@ -1392,7 +1412,7 @@
+ 					server: document.getElementById("ssp_server").value,
+ 					server_port: document.getElementById("ssp_prot").value,
+ 					password: document.getElementById("ss_password").value,
+-					insecure: document.getElementById("ssp_insecure").value,
++					insecure: document.getElementById("ssp_insecure").checked ? "1" : "0",
+ 					tls: document.getElementById("v2_tls").value,
+ 					tls_host: document.getElementById("ssp_tls_host").value,
+ 					coustom: "1",
+@@ -2354,8 +2374,9 @@
+ 															<td>
+ 																<select name="v2_flow" id="v2_flow" class="input" style="width: 200px;">
+ 																	<option value="0">未配置</option>
+-																	<option value="1">xtls-rprx-direct</option>
+-																	<option value="2">xtls-rprx-splice</option>
++																	<option value="1">xtls-rprx-direct（旧节点）</option>
++																	<option value="2">xtls-rprx-splice（旧节点）</option>
++														<option value="3">xtls-rprx-vision（TLS）</option>
+ 																</select>
+ 
+ 															</td>
+--- a/trunk/user/xray/Makefile
++++ b/trunk/user/xray/Makefile
+@@ -1,11 +1,11 @@
+ include $(ROOTDIR)/rules.mk
+ 
+ PKG_NAME:=xray
+-PKG_VERSION:=1.7.5
++PKG_VERSION:=26.10.21
+ 
+ PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+ PKG_SOURCE_URL:=https://codeload.github.com/XTLS/Xray-core/tar.gz/v$(PKG_VERSION)?
+-PKG_HASH:=a5fc936136a57a463bf9a895d068fdfa895b168ae6093c58a10208e098b6b2d3
++PKG_HASH:=44ef4874529a03848c90f1fdcfb763350fbc5f1de741ec90e0024d651df25650
+ 
+ PKG_BUILD_DIR:=$(BUILD_DIR)/Xray-core-$(PKG_VERSION)
+ 
+@@ -16,7 +16,7 @@
+ 
+ define Build/Compile
+ 	(cd $(PKG_BUILD_DIR); \
+-		GOOS=linux GOARCH=mipsle CGO_ENABLED=0 \
++		GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 GOTOOLCHAIN=go1.27.3 \
+ 		go build -v -o xray \
+ 		-trimpath -ldflags "-s -w -buildid=" \
+ 		./main; \
+@@ -25,6 +25,9 @@
+ 
+ $(eval $(call BuildPackage,xray))
+ 
+-romfs:
++# 配方变更时重新验证构建输入。
++$(STAMP_PREPARED): Makefile
++
++romfs: $(STAMP_BUILT)
+ 	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
+ 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/xray $(ROMFSDIR)/usr/bin/xray
+--- a/trunk/user/zerotier/Makefile
++++ b/trunk/user/zerotier/Makefile
+@@ -1,32 +1,30 @@
+-SRC_NAME = ZeroTierOne-1.10.6
+-SRC_URL = https://github.com/zerotier/ZeroTierOne/archive/refs/tags/1.10.6.tar.gz
++include $(ROOTDIR)/rules.mk
+ 
+-THISDIR = $(shell pwd)
+-FLAGS := DEFS=""
+-LDFLAGS := -static-libstdc++
++PKG_NAME:=zerotier
++PKG_VERSION:=1.16.2
++PKG_SOURCE:=zerotier-$(PKG_VERSION).tar.gz
++PKG_SOURCE_URL:=https://codeload.github.com/zerotier/ZeroTierOne/tar.gz
++PKG_SOURCE_URL_FILE:=refs/tags/$(PKG_VERSION)
++PKG_HASH:=2c607f573c6e38815433af289d364a689a203b18b51125f06c4472014d0657f0
+ 
+-all: download_test extract_test
+-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)
++include $(INCLUDE_DIR)/package.mk
+ 
+-download_test:
+-	( if [ ! -f $(SRC_NAME).tar.gz ]; then \
+-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.gz $(SRC_URL); \
+-	fi )
++define Build/Prepare
++	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
++	tar -xzf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 --exclude='*/ext/libpqxx-*/install/*' -C '$(PKG_BUILD_DIR)'
++	$(Build/Patch)
++endef
+ 
+-extract_test:
+-	 if [ ! -d $(SRC_NAME) ] ; then \
+-		tar xf $(SRC_NAME).tar.gz ; \
+-		patch -d $(SRC_NAME) -p1 -i ../0007-add-cerrno-header-for-str-errno.patch ; \
+-		patch -d $(SRC_NAME) -p1 -i ../0008-fix-compilation-for-arm_cortex-a7-neon.patch; \
+-	 fi ;
++# 仅构建上游 MPL 客户端与 Moon 功能；新版独立授权的控制器不纳入公共固件。
++MAKE_FLAGS += ZT_EMBEDDED=1 ZT_CONTROLLER=0 ZT_NONFREE=0 ZT_SSO_SUPPORTED=0
++EXTRA_CFLAGS += -ffunction-sections -fdata-sections
++EXTRA_LDFLAGS += -static-libstdc++ -static-libgcc -Wl,--gc-sections
++$(eval $(call BuildPackage,zerotier))
++$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
+ 
+-clean:
+-	if [ -f $(SRC_NAME)/Makefile ] ; then \
+-		$(MAKE) -C $(SRC_NAME) distclean ; \
+-	fi ; \
+-
+-romfs:
+-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/zerotier-one /usr/bin/zerotier-one
+-	$(ROMFSINST) $(THISDIR)/zerotier.sh /usr/bin/zerotier.sh
++romfs: $(STAMP_BUILT)
++	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/zerotier-one $(ROMFSDIR)/usr/bin/zerotier-one
++	$(INSTALL_BIN) ./zerotier.sh $(ROMFSDIR)/usr/bin/zerotier.sh
+ 	ln -sf zerotier-one $(ROMFSDIR)/usr/bin/zerotier-cli
+ 	ln -sf zerotier-one $(ROMFSDIR)/usr/bin/zerotier-idtool
+--- a/trunk/user/zerotier/zerotier.sh
++++ b/trunk/user/zerotier/zerotier.sh
+@@ -1,216 +1,214 @@
+ #!/bin/sh
+-#20200426 chongshengB
+-#20210410 xumng123
++# 身份和网络配置长期保留，运行状态只放在内存目录。
++umask 077
+ PROG=/usr/bin/zerotier-one
+ PROGCLI=/usr/bin/zerotier-cli
+ PROGIDT=/usr/bin/zerotier-idtool
+-config_path="/etc/storage/zerotier-one"
+-start_instance() {
+-	cfg="$1"
+-	echo $cfg
+-	port=""
+-	args=""
+-	moonid="$(nvram get zerotier_moonid)"
+-	secret="$(nvram get zerotier_secret)"
+-	enablemoonserv="$(nvram get zerotiermoon_enable)"
+-	if [ ! -d "$config_path" ]; then
+-		mkdir -p $config_path
+-	fi
+-	mkdir -p $config_path/networks.d
+-	if [ -n "$port" ]; then
+-		args="$args -p$port"
+-	fi
+-	if [ -z "$secret" ]; then
+-		logger -t "zerotier" "设备密匙为空,正在生成密匙,请稍后..."
+-		sf="$config_path/identity.secret"
+-		pf="$config_path/identity.public"
+-		$PROGIDT generate "$sf" "$pf"  >/dev/null
+-		[ $? -ne 0 ] && return 1
+-		secret="$(cat $sf)"
+-		#rm "$sf"
+-		nvram set zerotier_secret="$secret"
+-		nvram commit
+-	fi
+-	if [ -n "$secret" ]; then
+-		logger -t "zerotier" "找到密匙,正在写入文件,请稍后..."
+-		echo "$secret" >$config_path/identity.secret
+-		$PROGIDT getpublic $config_path/identity.secret >$config_path/identity.public
+-		#rm -f $config_path/identity.public
+-	fi
+-
+-	add_join $(nvram get zerotier_id)
+-
+-	$PROG $args $config_path >/dev/null 2>&1 &
+-		
+-	rules
+-	
+-	if [ -n "$moonid" ]; then
+-		$PROGCLI -D$config_path orbit $moonid $moonid
+-		logger -t "zerotier" "orbit moonid $moonid ok!"
+-	fi
+-
+-
+-	if [ -n "$enablemoonserv" ]; then
+-		if [ "$enablemoonserv" -eq "1" ]; then
+-			logger -t "zerotier" "creat moon start"
+-			creat_moon
+-		else
+-			logger -t "zerotier" "remove moon start"
+-			remove_moon
+-		fi
+-	fi
+-}
+-
+-add_join() {
+-		touch $config_path/networks.d/$1.conf
+-}
+-
++config_path=/etc/storage/zerotier-one
++runtime=/var/run/zerotier
++self=/usr/bin/zerotier.sh
++mkdir -p "$runtime" || exit 1
++
++valid_hex() {
++    case "$1" in ''|*[!0-9a-fA-F]*) return 1;; esac
++    [ "${#1}" -ge "$2" ] && [ "${#1}" -le "$3" ]
++}
++
++interfaces() {
++    ip -o link show | awk -F ': ' '$2 ~ /^zt[a-zA-Z0-9]+(@|$)/ {sub(/@.*/, "", $2); print $2}'
++}
++
++zero_route() {
++    route_count=$(nvram get zero_staticnum_x)
++    case "$route_count" in ''|*[!0-9]*) return 0;; esac
++    [ "$route_count" -le 128 ] || return 1
++    route_index=0
++    while [ "$route_index" -lt "$route_count" ]; do
++        enabled=$(nvram get "zero_enable_x$route_index")
++        destination=$(nvram get "zero_ip_x$route_index")
++        gateway=$(nvram get "zero_route_x$route_index")
++        route_index=$((route_index + 1))
++        [ "$enabled" = 1 ] || continue
++        # 字段分别传给 ip，不展开为命令；错误路由交给内核拒绝。
++        case "$destination" in ''|*[!0-9./]*) continue;; esac
++        case "$gateway" in ''|*[!0-9.]*) continue;; esac
++        ip route "$1" "$destination" via "$gateway" dev "$zt0" 2>/dev/null
++    done
++    return 0
++}
++
++del_rules() {
++    # 只清理本插件的专用链，不能冲刷用户的防火墙或 DNS 接管规则。
++    iptables -D INPUT -j ZT_PADAVAN_IN 2>/dev/null
++    iptables -D FORWARD -j ZT_PADAVAN_FW 2>/dev/null
++    iptables -t nat -D POSTROUTING -j ZT_PADAVAN_NAT 2>/dev/null
++    for chain in ZT_PADAVAN_IN ZT_PADAVAN_FW; do
++        iptables -F "$chain" 2>/dev/null
++        iptables -X "$chain" 2>/dev/null
++    done
++    iptables -t nat -F ZT_PADAVAN_NAT 2>/dev/null
++    iptables -t nat -X ZT_PADAVAN_NAT 2>/dev/null
++    if [ -f "$runtime/interfaces" ]; then
++        while IFS= read -r zt0; do
++            case "$zt0" in zt*[!a-zA-Z0-9]*|'') continue;; zt*) zero_route del;; esac
++        done < "$runtime/interfaces"
++        rm -f "$runtime/interfaces"
++    fi
++    return 0
++}
+ 
+ rules() {
+-	while [ "$(ifconfig | grep zt | awk '{print $1}')" = "" ]; do
+-		sleep 1
+-	done
+-	nat_enable=$(nvram get zerotier_nat)
+-	zt0=$(ifconfig | grep zt | awk '{print $1}')
+-	logger -t "zerotier" "zt interface $zt0 is started!"
+-	del_rules
+-	iptables -A INPUT -i $zt0 -j ACCEPT
+-	iptables -A FORWARD -i $zt0 -o $zt0 -j ACCEPT
+-	iptables -A FORWARD -i $zt0 -j ACCEPT
+-	if [ $nat_enable -eq 1 ]; then
+-		iptables -t nat -A POSTROUTING -o $zt0 -j MASQUERADE
+-		ip_segment="$(ip route | grep "dev $zt0 proto" | awk '{print $1}')"
+-		iptables -t nat -A POSTROUTING -s $ip_segment -j MASQUERADE
+-		zero_route "add"
+-	fi
+-
+-}
+-
+-
+-del_rules() {
+-	zt0=$(ifconfig | grep zt | awk '{print $1}')
+-	ip_segment=`ip route | grep "dev $zt0  proto" | awk '{print $1}'`
+-	iptables -D FORWARD -i $zt0 -j ACCEPT 2>/dev/null
+-	iptables -D FORWARD -o $zt0 -j ACCEPT 2>/dev/null
+-	iptables -D FORWARD -i $zt0 -o $zt0 -j ACCEPT
+-	iptables -D INPUT -i $zt0 -j ACCEPT 2>/dev/null
+-	iptables -t nat -D POSTROUTING -o $zt0 -j MASQUERADE 2>/dev/null
+-	iptables -t nat -D POSTROUTING -s $ip_segment -j MASQUERADE 2>/dev/null
+-}
+-
+-zero_route(){
+-	rulesnum=`nvram get zero_staticnum_x`
+-	for i in $(seq 1 $rulesnum)
+-	do
+-		j=`expr $i - 1`
+-		route_enable=`nvram get zero_enable_x$j`
+-		zero_ip=`nvram get zero_ip_x$j`
+-		zero_route=`nvram get zero_route_x$j`
+-		if [ "$1" = "add" ]; then
+-			if [ $route_enable -ne 0 ]; then
+-				ip route add $zero_ip via $zero_route dev $zt0
+-				echo "$zt0"
+-			fi
+-		else
+-			ip route del $zero_ip via $zero_route dev $zt0
+-		fi
+-	done
++    # 等待在后台进行，未授权网络不能一直阻塞 WAN 启动流程。
++    count=0
++    while [ -z "$(interfaces)" ]; do
++        pidof zerotier-one >/dev/null 2>&1 || return 1
++        count=$((count + 1))
++        if [ "$count" -ge 60 ]; then
++            logger -t zerotier "60 秒内未出现已授权网卡，完成授权后请重新启动插件"
++            return 1
++        fi
++        sleep 1
++    done
++    del_rules
++    iptables -N ZT_PADAVAN_IN || return 1
++    iptables -N ZT_PADAVAN_FW || { del_rules; return 1; }
++    iptables -t nat -N ZT_PADAVAN_NAT || { del_rules; return 1; }
++    interfaces > "$runtime/interfaces"
++    nat_enable=$(nvram get zerotier_nat)
++    while IFS= read -r zt0; do
++        iptables -A ZT_PADAVAN_IN -i "$zt0" -j ACCEPT || { del_rules; return 1; }
++        iptables -A ZT_PADAVAN_FW -i "$zt0" -j ACCEPT || { del_rules; return 1; }
++        if [ "$nat_enable" = 1 ]; then
++            iptables -t nat -A ZT_PADAVAN_NAT -o "$zt0" -j MASQUERADE || { del_rules; return 1; }
++            for segment in $(ip -4 route show dev "$zt0" proto kernel | awk '$1 ~ /^[0-9]+\./ {print $1}'); do
++                iptables -t nat -A ZT_PADAVAN_NAT -s "$segment" -j MASQUERADE || { del_rules; return 1; }
++            done
++            zero_route add
++        fi
++    done < "$runtime/interfaces"
++    iptables -A INPUT -j ZT_PADAVAN_IN &&
++    iptables -A FORWARD -j ZT_PADAVAN_FW &&
++    iptables -t nat -A POSTROUTING -j ZT_PADAVAN_NAT || { del_rules; return 1; }
++}
++
++stop_worker() {
++    if [ -r "$runtime/worker.pid" ]; then
++        worker=$(cat "$runtime/worker.pid")
++        case "$worker" in ''|*[!0-9]*) ;; *)
++            # PID 可能已被复用，核对实际命令后才发送信号。
++            if [ -r "/proc/$worker/cmdline" ] &&
++               tr '\000' ' ' < "/proc/$worker/cmdline" | grep -F "$self rules" >/dev/null; then
++                kill "$worker" 2>/dev/null
++            fi;;
++        esac
++        rm -f "$runtime/worker.pid"
++    fi
++}
++
++stop_zero() {
++    stop_worker
++    if pidof zerotier-one >/dev/null 2>&1; then
++        killall -TERM zerotier-one 2>/dev/null
++        count=0
++        while pidof zerotier-one >/dev/null 2>&1 && [ "$count" -lt 5 ]; do
++            sleep 1; count=$((count + 1))
++        done
++        pidof zerotier-one >/dev/null 2>&1 && killall -KILL zerotier-one 2>/dev/null
++    fi
++    del_rules
++    # 不删除 identity.secret、networks.d、moons.d 和用户的 local.conf。
++}
++
++prepare_identity() {
++    mkdir -p "$config_path/networks.d" || return 1
++    chmod 700 "$config_path" "$config_path/networks.d"
++    secret=$(nvram get zerotier_secret)
++    if [ -n "$secret" ]; then
++        printf '%s\n' "$secret" > "$config_path/identity.secret.new"
++        "$PROGIDT" getpublic "$config_path/identity.secret.new" > "$config_path/identity.public.new" || {
++            rm -f "$config_path/identity.secret.new" "$config_path/identity.public.new"; return 1;
++        }
++        mv -f "$config_path/identity.secret.new" "$config_path/identity.secret"
++        mv -f "$config_path/identity.public.new" "$config_path/identity.public"
++    elif [ -s "$config_path/identity.secret" ]; then
++        "$PROGIDT" getpublic "$config_path/identity.secret" > "$config_path/identity.public.new" || return 1
++        mv -f "$config_path/identity.public.new" "$config_path/identity.public"
++    else
++        "$PROGIDT" generate "$config_path/identity.secret" "$config_path/identity.public" >/dev/null || return 1
++    fi
++    chmod 600 "$config_path/identity.secret"
++    if [ -z "$secret" ]; then
++        nvram set "zerotier_secret=$(cat "$config_path/identity.secret")"
++        nvram commit
++    fi
++}
++
++creat_moon() {
++    moonip=$(nvram get zerotiermoon_ip)
++    [ -n "$moonip" ] || moonip=$(nvram get wan0_ipaddr)
++    printf '%s\n' "$moonip" | awk -F. 'NF!=4 {exit 1} {for(i=1;i<=4;i++) if($i !~ /^[0-9]+$/ || $i>255) exit 1}' || return 1
++    "$PROGIDT" initmoon "$config_path/identity.public" > "$config_path/moon.json" || return 1
++    sed -i "s/\[\]/[ \"$moonip\/9993\" ]/" "$config_path/moon.json" || return 1
++    (cd "$config_path" && "$PROGIDT" genmoon moon.json) || return 1
++    mkdir -p "$config_path/moons.d" || return 1
++    for moon in "$config_path"/*.moon; do
++        [ -f "$moon" ] || continue
++        mv "$moon" "$config_path/moons.d/" || return 1
++    done
++    moonid=$(sed -n 's/^[[:space:]]*"id"[[:space:]]*:[[:space:]]*"\([0-9a-fA-F]*\)".*/\1/p' "$config_path/moon.json" | head -n 1)
++    valid_hex "$moonid" 10 16 || return 1
++    nvram set "zerotiermoon_id=$moonid"
++    nvram commit
++}
++
++remove_moon() {
++    moonid=$(nvram get zerotiermoon_id)
++    [ -n "$moonid" ] || return 0
++    valid_hex "$moonid" 10 16 || return 1
++    # 文件名固定为十六进制世界编号，不使用可展开为路径的输入。
++    padded=$(printf '%016s' "$moonid" | tr ' ' 0)
++    rm -f "$config_path/moons.d/$padded.moon" "$config_path/moon.json"
++    nvram set zerotiermoon_id=
++    nvram commit
+ }
+ 
+ start_zero() {
+-	logger -t "zerotier" "正在启动zerotier"
+-	kill_z
+-	start_instance 'zerotier'
+-
+-}
+-kill_z() {
+-	zerotier_process=$(pidof zerotier-one)
+-	if [ -n "$zerotier_process" ]; then
+-		logger -t "ZEROTIER" "关闭进程..."
+-		killall zerotier-one >/dev/null 2>&1
+-		kill -9 "$zerotier_process" >/dev/null 2>&1
+-	fi
+-}
+-stop_zero() {
+-	del_rules
+-	zero_route "del"
+-	kill_z
+-	rm -rf $config_path
+-}
+-
+-#创建moon节点
+-creat_moon(){
+-	moonip="$(nvram get zerotiermoon_ip)"
+-	logger -t "zerotier" "moonip $moonip"
+-	#检查是否合法ip
+-	regex="\b(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[1-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[1-9])\b"
+-	ckStep2=`echo $moonip | egrep $regex | wc -l`
+-
+-	logger -t "zerotier" "搭建ZeroTier的Moon中转服务器，生成moon配置文件"
+-	if [ -z "$moonip" ]; then
+-		#自动获取wanip
+-		ip_addr=`ifconfig -a ppp0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
+-	#elif [ $ckStep2 -eq 0 ]; then
+-		#不是ip
+-	#	ip_addr = `curl $moonip`
+-	else
+-		ip_addr=$moonip
+-	fi
+-	logger -t "zerotier" "moonip $ip_addr"
+-	if [ -e $config_path/identity.public ]; then
+-
+-		$PROGIDT initmoon $config_path/identity.public > $config_path/moon.json
+-		if `sed -i "s/\[\]/\[ \"$ip_addr\/9993\" \]/" $config_path/moon.json >/dev/null 2>/dev/null`; then
+-			logger -t "zerotier" "生成moon配置文件成功"
+-		else
+-			logger -t "zerotier" "生成moon配置文件失败"
+-		fi
+-
+-		logger -t "zerotier" "生成签名文件"
+-		cd $config_path
+-		pwd
+-		$PROGIDT genmoon $config_path/moon.json
+-		[ $? -ne 0 ] && return 1
+-		logger -t "zerotier" "创建moons.d文件夹，并把签名文件移动到文件夹内"
+-		if [ ! -d "$config_path/moons.d" ]; then
+-			mkdir -p $config_path/moons.d
+-		fi
+-		
+-		#服务器加入moon server
+-		mv $config_path/*.moon $config_path/moons.d/ >/dev/null 2>&1
+-		logger -t "zerotier" "moon节点创建完成"
+-
+-		zmoonid=`cat moon.json | awk -F "[id]" '/"id"/{print$0}'` >/dev/null 2>&1
+-		zmoonid=`echo $zmoonid | awk -F "[:]" '/"id"/{print$2}'` >/dev/null 2>&1
+-		zmoonid=`echo $zmoonid | tr -d '"|,'`
+-
+-		nvram set zerotiermoon_id="$zmoonid"
+-		nvram commit
+-	else
+-		logger -t "zerotier" "identity.public不存在"
+-	fi
+-}
+-
+-remove_moon(){
+-	zmoonid="$(nvram get zerotiermoon_id)"
+-	
+-	if [ ! -n "$zmoonid"]; then
+-		rm -f $config_path/moons.d/000000$zmoonid.moon
+-		rm -f $config_path/moon.json
+-		nvram set zerotiermoon_id=""
+-		nvram commit
+-	fi
+-}
+-
+-case $1 in
+-start)
+-	start_zero
+-	;;
+-stop)
+-	stop_zero
+-	;;
+-*)
+-	echo "check"
+-	#exit 0
+-	;;
++    if [ -d "$config_path/controller.d" ]; then
++        logger -t zerotier "检测到旧内置控制器数据；新版客户端不带该控制器，请先迁移控制器，现有数据已保留"
++        return 1
++    fi
++    network=$(nvram get zerotier_id)
++    [ -z "$network" ] || valid_hex "$network" 16 16 || {
++        logger -t zerotier "网络编号必须是 16 位十六进制"; return 1;
++    }
++    pidof zerotier-one >/dev/null 2>&1 && return 0
++    prepare_identity || { logger -t zerotier "身份校验失败，未启动服务"; return 1; }
++    [ -z "$network" ] || touch "$config_path/networks.d/$network.conf"
++    case "$(nvram get zerotiermoon_enable)" in
++        1) creat_moon || return 1;;
++        0) remove_moon || return 1;;
++    esac
++    (exec 9>&-; exec "$PROG" "$config_path") >/dev/null 2>&1 &
++    sleep 1
++    pidof zerotier-one >/dev/null 2>&1 || return 1
++    moonid=$(nvram get zerotier_moonid)
++    if [ -n "$moonid" ] && valid_hex "$moonid" 10 16; then
++        timeout 5 "$PROGCLI" "-D$config_path" orbit "$moonid" "$moonid" >/dev/null 2>&1
++    fi
++    stop_worker
++    (exec 9>&-; exec /bin/sh "$self" rules) >/dev/null 2>&1 &
++    printf '%s\n' "$!" > "$runtime/worker.pid"
++}
++
++case "$1" in
++    rules) rules; exit $?;;
++    start|stop|restart) ;;
++    *) echo "用法：$0 start|stop|restart" >&2; exit 2;;
+ esac
++exec 9>"$runtime/service.lock"
++flock -w 10 9 || exit 1
++case "$1" in
++    start) start_zero;;
++    stop) stop_zero;;
++    restart) stop_zero && start_zero;;
++esac

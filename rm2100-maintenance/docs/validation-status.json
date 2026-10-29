@@ -1,0 +1,35 @@
+{
+  "recorded": "2026-10-29",
+  "purpose": "staged_backup_not_complete_firmware_source",
+  "remote_base": "58affcd77cf2e6cee2a159c11440b2c3d462dd0d",
+  "current_daily_firmware": "U9",
+  "optional_candidate": "U10",
+  "source_integration_complete": false,
+  "validation": {
+    "U9_firmware_boot_and_two_band_user_report": true,
+    "U10_firmware_boot_and_two_band_user_report": true,
+    "sing_box_mihomo_configured_hardware_checks": 86,
+    "public_https_cases": 8,
+    "udp_packets": 48,
+    "transparent_takeover": "in_progress",
+    "Tailscale_private_peer": "pending",
+    "other_device_USB_hardware": "not_tested",
+    "long_term_stability": "not_complete"
+  },
+  "firmware_hashes": {
+    "U9": "281137da85e6fbdc8a45d6c71fa152f43f5cb4579f676ff266ca5ee2480cc2ae",
+    "U10": "0785a85e708efbf5dbb371d58a10f9789e8c6a9a7143b4975bbbf82e2b337de3"
+  },
+  "patches": [
+    {
+      "path": "patches/001-U8r3-to-U9-source.patch",
+      "bytes": 99618,
+      "sha256": "5aa278f1023fcc574621971c49797eba115a2bdbb9f1bf59aab72f70e1fce5ae"
+    },
+    {
+      "path": "patches/002-U9-to-U10-optional-plugins.patch",
+      "bytes": 140693,
+      "sha256": "9a62cd2c4b9a0b5ec0f3970292dd9ffd4470581ef30e2bce0421d384ead124fe"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+RM2100 U11 验收记录（2026-10-30）
+
+源码修复提交：4d9f1e862a82465ed4c79791bcfe296ec922141c。
+GitHub 干净构建基线：6b19a159fe574317c8d6897c965be734d76558da。
+基线在空构建层完整 make RM2100 通过，复用下载缓存和工具链，未复用
+旧 build/stage/romfs/images 或编译缓存。新增修复再干净重编 SoftEther
+并完成整包构建；不是对 4d9f 进行第二次全树 clean。
+
+修复包含 SoftEther 管理连接线程引用竞态、Linux 停止信号丢失唤醒，
+以及关闭 SoftEther 时误删 OpenVPN/PPTP/L2TP 共用管理页面的问题。
+
+最终程序在 Ubuntu 隔离环境中通过 OpenVPN 14 组旧版互通、SoftEther
+4.29 配置迁移到 MIPS 4.41 的 59 项检查、8 轮共 3200 次管理连接退出
+回归。原先仅终止 execsvc 监督进程的生命周期结论已被严格 PID 检查替代。
+
+U11 实机固件为 19,732,331 字节。
+SHA-256：3931083d1f7eef4bbf874e5d11550fd46911e6bb5c32ae22d9d66a542c68acfb
+内置 OpenVPN 2.7.8。包含全部 SoftEther 的镜像超过该实机 20 MiB
+firmware 分区，没有刷入；SoftEther 用同源 RAM 组件完成验收后清理。
+其他机型仍应核对实际容量和机型选项，不得直接沿用该分区上限。
+
+RM2100 原生 OpenVPN 通过 43 项，原生 SoftEther 通过 75 项；涵盖
+设备分别作为服务端和客户端、双栈双向 TCP/UDP 数据、服务正式停止、
+全部 PID 退出、重启与重连后的数据传输。OpenVPN 对端是 Ubuntu 2.5；
+SoftEther 对端是 Ubuntu 下的 MIPS QEMU。外层使用回环 SSH TCP 转发。
+
+未覆盖：实机外层 OpenVPN UDP、公网跨 WAN 接入、SoftEther 的
+L2TP/IPsec/SSTP/OpenVPN 兼容协议、长期稳定性、USB 令牌及其他机型。
+这些未验证项不能以编译通过或本次隧道测试代替。
+
+已保留原 NVRAM 和官方 AdGuardHome 配置，实际 Flash 与固件哈希一致。
+用户确认两路 Wi-Fi 上网正常，最终有线双栈 DNS/HTTPS 和 UPnP 查询通过。
+启动初期一次 IPv6 检查失败，未改设置，后续稳定阶段及收尾复测均通过；
+未把该短时现象宣称为已确定底层原因。测试夹具的旧地址残留也已修正，
+完整重跑通过，失败记录保留。所有临时接口、监听、规则及组件已清理。
+
+U9 回退包与配置备份保留。本提交仅补充验收记录，不改变产品配置。

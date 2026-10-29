@@ -178,11 +178,12 @@ enum {
 #define V10_W53_SIZE           4
 #define V10_W56_VHT80_A_SIZE   4
 #define V10_W56_VHT80_B_SIZE   4
-#define V10_W56_VHT80_SIZE     (V10_W56_VHT80_A_SIZE + V10_W56_VHT80_A_SIZE)
+#define V10_W56_VHT80_C_SIZE   4
+#define V10_W56_VHT80_SIZE     (V10_W56_VHT80_A_SIZE + V10_W56_VHT80_A_SIZE + V10_W56_VHT80_C_SIZE)
 #define V10_W56_VHT20_SIZE     3
-#define V10_W56_SIZE          11
+#define V10_W56_SIZE          12
 #define V10_TOTAL_CHANNEL_COUNT (V10_W52_SIZE + V10_W53_SIZE \
-				+ V10_W56_VHT80_A_SIZE + V10_W56_VHT80_B_SIZE + V10_W56_VHT20_SIZE)
+				+ V10_W56_VHT80_A_SIZE + V10_W56_VHT80_B_SIZE + V10_W56_VHT80_C_SIZE)
 #define V10_5G_TOTAL_CHNL_COUNT (V10_TOTAL_CHANNEL_COUNT + V10_LAST_SIZE)
 
 typedef enum _V10_NEC_GRP_LIST {
@@ -360,6 +361,11 @@ union dfs_zero_wait_msg {
 };
 
 #ifdef CUSTOMISE_RDD_THRESHOLD_SUPPORT
+typedef struct _DFS_RT_MATCHING_LIST {
+	RTMP_STRING *pRadarType;
+	RTMP_STRING *pMatchingRadarType;
+} DFS_RT_MATCHING_LIST, *PDFS_RT_MATCHING_LIST;
+
 typedef struct _DFS_PULSE_THRESHOLD_PARAM {
 	UINT32 u4PulseWidthMax;			/* unit us */
 	INT32 i4PulsePwrMax;			/* unit dbm */
@@ -386,6 +392,11 @@ typedef struct _DFS_PARAM {
 	UCHAR Bw;
 	UCHAR RDDurRegion;
 	DFS_CHANNEL_LIST DfsChannelList[MAX_NUM_OF_CHANNELS];
+#ifdef PADAVAN_WIFI5_POLICY
+	/* 按信道号保存禁用期，换区域后再切回也不能提前解除。 */
+	DFS_CHANNEL_LIST DfsNopHistory[256];
+	UCHAR DfsChannelCountry[2];
+#endif
 	UCHAR ChannelListNum;
 	UCHAR AvailableBwChIdx[DFS_AVAILABLE_LIST_BW_NUM][DFS_AVAILABLE_LIST_CH_NUM];
 	UCHAR Bw40GroupIdx[DFS_BW40_GROUP_NUM][DFS_BW40_PRIMCH_NUM];
@@ -625,6 +636,9 @@ VOID DfsOutBandCacPass(
 NTSTATUS DfsChannelSwitchTimeoutAction(
 	PRTMP_ADAPTER pAd, PCmdQElmt CMDQelmt);
 
+NTSTATUS DfsSwitchChAfterRadarDetected(
+	PRTMP_ADAPTER pAd, PCmdQElmt CMDQelmt);
+
 NTSTATUS DfsAPRestart(
 	PRTMP_ADAPTER pAd, PCmdQElmt CMDQelmt);
 
@@ -681,9 +695,11 @@ USHORT DfsV10SelectBestChannel(/*Select the Channel from Rank List by ACS*/
 	IN UCHAR oldChannel);
 
 UCHAR DfsV10CheckChnlGrp(
+	IN PRTMP_ADAPTER pAd,
 	IN UCHAR Channel);
 
 BOOLEAN DfsV10CheckW56Grp(
+	IN PRTMP_ADAPTER pAd,
 	IN UCHAR channel);
 
 VOID DfsV10AddWeighingFactor(

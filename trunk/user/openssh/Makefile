@@ -1,73 +1,38 @@
-SRC_NAME=openssh-8.1p1
-SRC_URL=https://ftp.usa.openbsd.org/pub/OpenBSD/OpenSSH/portable/$(SRC_NAME).tar.gz
+include $(ROOTDIR)/rules.mk
 
-THISDIR = $(shell pwd)
+PKG_NAME:=openssh
+PKG_VERSION:=10.6p1
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable
+PKG_HASH:=a9dc9565dffe8640f64d863cd29a32bc4a3dbdec0566a7fc44c5d6ee767d5f39
+include $(INCLUDE_DIR)/package.mk
 
-all: download_test extract_test config_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)
+CONFIGURE_ARGS += \
+	--prefix=/usr \
+	--sysconfdir=/etc/storage/openssh \
+	--libexecdir=/usr/libexec \
+	--with-pid-dir=/var/run \
+	--with-privsep-path=/var/empty \
+	--with-privsep-user=sshd \
+	--with-sandbox=no \
+	--without-pam --without-selinux --without-bsd-auth --without-kerberos5 \
+	--disable-strip --disable-etc-default-login --disable-lastlog \
+	--disable-utmp --disable-utmpx --disable-wtmp --disable-wtmpx --disable-libutil
+CONFIGURE_VARS += LD="$(TARGET_CC)"
+# OpenSSH 的链接规则使用编译器参数，不能传给裸 ld。
+MAKE_FLAGS += LD="$(TARGET_CC)"
 
-download_test:
-	( if [ ! -f $(SRC_NAME).tar.gz ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.gz $(SRC_URL); \
-	fi )
-
-extract_test:
-	( if [ ! -d $(SRC_NAME) ]; then \
-		tar xzf $(SRC_NAME).tar.gz; \
-		patch -d $(SRC_NAME) -p1 -i ../openssh-orig.patch; \
-	fi )
-
-config_test:
-	( if [ -f ./config_done ]; then \
-		echo "the same configuration"; \
-	else \
-		make configure && touch config_done; \
-	fi )
-
-configure:
-	( cd $(SRC_NAME) ; \
-	autoreconf -v; \
-	LD="$(CC)" \
-	./configure \
-		--prefix=/usr \
-		--sysconfdir=/etc/storage/openssh \
-		--libexecdir=/usr/libexec \
-		--with-pid-dir=/var/run \
-		--with-privsep-path=/var/empty \
-		--with-privsep-user=sshd \
-		--with-sandbox=no \
-		--without-pam \
-		--without-selinux \
-		--without-bsd-auth \
-		--without-kerberos5 \
-		--disable-strip \
-		--disable-etc-default-login \
-		--disable-lastlog \
-		--disable-utmp \
-		--disable-utmpx \
-		--disable-wtmp \
-		--disable-wtmpx \
-		--disable-libutil \
-		--host=$(HOST_TARGET) \
-		--build=$(HOST_BUILD) ; \
-	)
-
-clean:
-	if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) distclean ; \
-	fi ; \
-	rm -f config_done
+$(eval $(call BuildPackage,openssh))
 
 romfs:
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_OPENSSH),y)
-	mkdir -p $(INSTALLDIR)/etc_ro/ssh
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/moduli /etc_ro/ssh/moduli
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/libssh.so /lib/libssh.so
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/scp /usr/bin/scp
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/ssh /usr/bin/ssh
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/ssh-keygen /usr/bin/ssh-keygen
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/sshd /usr/sbin/sshd
-	$(ROMFSINST) -p +x /usr/bin/sshd.sh
+	$(INSTALL_DIR) $(ROMFSDIR)/etc_ro/ssh $(ROMFSDIR)/usr/bin $(ROMFSDIR)/usr/sbin $(ROMFSDIR)/usr/libexec
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/moduli $(ROMFSDIR)/etc_ro/ssh/moduli
+	for p in scp ssh ssh-keygen; do $(INSTALL_BIN) $(PKG_BUILD_DIR)/$$p $(ROMFSDIR)/usr/bin/$$p; done
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/sshd $(ROMFSDIR)/usr/sbin/sshd
+	$(INSTALL_BIN) ./sshd.sh $(ROMFSDIR)/usr/bin/sshd.sh
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/sshd-session $(ROMFSDIR)/usr/libexec/sshd-session
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/sshd-auth $(ROMFSDIR)/usr/libexec/sshd-auth
 endif
-	mkdir -p $(INSTALLDIR)/usr/libexec
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/sftp-server /usr/libexec/sftp-server
+	$(INSTALL_DIR) $(ROMFSDIR)/usr/libexec
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/sftp-server $(ROMFSDIR)/usr/libexec/sftp-server

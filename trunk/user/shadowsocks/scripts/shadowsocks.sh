@@ -46,7 +46,8 @@ find_bin() {
 	ssr) ret="/usr/bin/ssr-redir" ;;
 	ssr-local) ret="/usr/bin/ssr-local" ;;
 	ssr-server) ret="/usr/bin/ssr-server" ;;
-	v2ray|xray)
+	xray) ret="/usr/bin/xray" ;;
+	v2ray)
 		if [ -f "/usr/bin/$1" ]; then
 			ret="/usr/bin/$1"
 		else
@@ -65,8 +66,9 @@ run_bin() {
 	 	echo 0 > /sys/fs/cgroup/cpu/$NAME/tasks
 	 	echo 0 > /sys/fs/cgroup/memory/$NAME/tasks
 	 fi
-	 "$@" > /dev/null 2>&1
+	 exec "$@" >> /tmp/ssrplus.log 2>&1
 	) &
+	PROXY_RUN_PID=$!
 }
 
 cgroups_init() {
@@ -84,59 +86,47 @@ cgroups_init() {
 }
 
 cgroups_cleanup() {
+	[ -d /sys/fs/cgroup/cpu/$NAME ] || return 0
 	cat /sys/fs/cgroup/cpu/$NAME/tasks > /sys/fs/cgroup/cpu/tasks
 	cat /sys/fs/cgroup/memory/$NAME/tasks > /sys/fs/cgroup/memory/tasks
 	rmdir /sys/fs/cgroup/cpu/$NAME
 	rmdir /sys/fs/cgroup/memory/$NAME
 }
 
+# 配置生成与核心检查共用同一入口，禁止破坏 JSON 转义。
+. /etc_ro/ss/proxy-config.sh
+
 gen_config_file() {
-	fastopen="false"
+	[ "$SS_CONFIG_READY" = 1 ] && return 0
+	local stype bin
 	case "$2" in
-	0) config_file=$CONFIG_FILE && local stype=$(nvram get d_type) ;;
-	1) config_file=$CONFIG_UDP_FILE && local stype=$(nvram get ud_type) ;;
-	*) config_file=$CONFIG_SOCK5_FILE && local stype=$(nvram get s5_type) ;;
+	0) config_file=$CONFIG_FILE; stype=$(nvram get d_type) ;;
+	1) config_file=$CONFIG_UDP_FILE; stype=$(nvram get ud_type) ;;
+	*) config_file=$CONFIG_SOCK5_FILE; stype=$(nvram get s5_type) ;;
 	esac
-	local type=$stype
-	case "$type" in
-	ss)
-		lua /etc_ro/ss/genssconfig.lua $1 $3 >$config_file
-		sed -i 's/\\//g' $config_file
-		;;
-	ssr)
-		lua /etc_ro/ss/genssrconfig.lua $1 $3 >$config_file
-		sed -i 's/\\//g' $config_file
-		;;
+	bin=$(find_bin "$stype")
+	[ -x "$bin" ] || { log "找不到 $stype 程序。"; return 1; }
+	case "$stype" in
+	ss) proxy_json_write ss "$config_file" /etc_ro/ss/genssconfig.lua "$1" "$3" ;;
+	ssr) proxy_json_write ssr "$config_file" /etc_ro/ss/genssrconfig.lua "$1" "$3" ;;
 	trojan)
 		v2ray_enable=1
-		if [ "$2" = "0" ]; then
-			lua /etc_ro/ss/gentrojanconfig.lua $1 nat 1080 >$trojan_json_file
-			sed -i 's/\\//g' $trojan_json_file
+		if [ "$2" = 0 ]; then
+			proxy_json_write trojan "$trojan_json_file" /etc_ro/ss/gentrojanconfig.lua "$1" nat 1080
 		else
-			lua /etc_ro/ss/gentrojanconfig.lua $1 client 10801 >/tmp/trojan-ssr-reudp.json
-			sed -i 's/\\//g' /tmp/trojan-ssr-reudp.json
-		fi
-		;;
-	v2ray)
+			proxy_json_write trojan /tmp/trojan-ssr-reudp.json /etc_ro/ss/gentrojanconfig.lua "$1" client 10801
+		fi ;;
+	v2ray|xray)
 		v2ray_enable=1
-		if [ "$2" = "1" ]; then
-			lua /etc_ro/ss/genv2config.lua $1 udp 1080 >/tmp/v2-ssr-reudp.json
-			sed -i 's/\\//g' /tmp/v2-ssr-reudp.json
+		local generator=/etc_ro/ss/genv2config.lua
+		[ "$stype" = xray ] && generator=/etc_ro/ss/genxrayconfig.lua
+		if [ "$2" = 1 ]; then
+			proxy_json_write "$stype" /tmp/v2-ssr-reudp.json "$generator" "$1" udp 1080
 		else
-			lua /etc_ro/ss/genv2config.lua $1 tcp 1080 >$v2_json_file
-			sed -i 's/\\//g' $v2_json_file
-		fi
-		;;
-	xray)
-		v2ray_enable=1
-		if [ "$2" = "1" ]; then
-			lua /etc_ro/ss/genxrayconfig.lua $1 udp 1080 >/tmp/v2-ssr-reudp.json
-			sed -i 's/\\//g' /tmp/v2-ssr-reudp.json
-		else
-			lua /etc_ro/ss/genxrayconfig.lua $1 tcp 1080 >$v2_json_file
-			sed -i 's/\\//g' $v2_json_file
-		fi
-		;;	
+			proxy_json_write "$stype" "$v2_json_file" "$generator" "$1" tcp 1080
+		fi ;;
+	socks5) return 0 ;;
+	*) log "未知代理类型。"; return 1 ;;
 	esac
 }
 
@@ -232,7 +222,7 @@ start_rules() {
 
 start_redir_tcp() {
 	ARG_OTA=""
-	gen_config_file $GLOBAL_SERVER 0 1080
+	gen_config_file "$GLOBAL_SERVER" 0 1080 || return 1
 	stype=$(nvram get d_type)
 	local bin=$(find_bin $stype)
 	[ ! -f "$bin" ] && log "Main node:Can't find $bin program, can't start!" && return 1
@@ -261,12 +251,13 @@ start_redir_tcp() {
 		log "$($bin --version 2>&1 | head -1) 启动成功!"
 		;;
 	v2ray)
-		run_bin $bin -config $v2_json_file
-		log "$($bin -version | head -1) 启动成功!"
+		proxy_run_core "$bin" "$v2_json_file" 1080 tcp || return 1
+		log "$($bin version | head -1) 启动成功!"
 		;;
 	xray)
-		run_bin $bin -config $v2_json_file
-		log "$($bin -version | head -1) 启动成功!"
+		run_bin "$bin" run -config "$v2_json_file"
+		proxy_wait_listener "$PROXY_RUN_PID" 1080 tcp || return 1
+		log "$($bin version | head -1) 监听已就绪。"
 		;;	
 	socks5)
 		for i in $(seq 1 $threads); do
@@ -288,21 +279,22 @@ start_redir_udp() {
 		case "$utype" in
 		ss | ssr)
 			ARG_OTA=""
-			gen_config_file $UDP_RELAY_SERVER 1 1080
+			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
 			last_config_file=$CONFIG_UDP_FILE
 			pid_file="/var/run/ssr-reudp.pid"
 			run_bin $bin -c $last_config_file $ARG_OTA -U -f /var/run/ssr-reudp.pid
 			;;
 		v2ray)
-			gen_config_file $UDP_RELAY_SERVER 1
-			run_bin $bin -config /tmp/v2-ssr-reudp.json
+			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
+			proxy_run_core "$bin" /tmp/v2-ssr-reudp.json 1080 udp || return 1
 			;;
 		xray)
-			gen_config_file $UDP_RELAY_SERVER 1
-			run_bin $bin -config /tmp/v2-ssr-reudp.json
+			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
+			run_bin "$bin" run -config /tmp/v2-ssr-reudp.json
+			proxy_wait_listener "$PROXY_RUN_PID" 1080 udp || return 1
 			;;	
 		trojan)
-			gen_config_file $UDP_RELAY_SERVER 1
+			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
 			$bin --config /tmp/trojan-ssr-reudp.json >/dev/null 2>&1 &
 			run_bin ipt2socks -U -b 0.0.0.0 -4 -s 127.0.0.1 -p 10801 -l 1080
 			;;
@@ -343,9 +335,8 @@ start_dns() {
 	oversea)
 		ipset add gfwlist $dnsserver 2>/dev/null
 		mkdir -p /etc/storage/dnsmasq.oversea
-		sed -i '/dnsmasq-ss/d' /etc/storage/dnsmasq/dnsmasq.conf
-		sed -i '/dnsmasq.oversea/d' /etc/storage/dnsmasq/dnsmasq.conf
-		cat >>/etc/storage/dnsmasq/dnsmasq.conf <<EOF
+		proxy_dns_remove_owned
+			cat >>/etc/storage/dnsmasq/dnsmasq.conf <<EOF
 conf-dir=/etc/storage/dnsmasq.oversea
 EOF
 ;;
@@ -380,36 +371,35 @@ start_AD() {
 start_local() {
 	local s5_port=$(nvram get socks5_port)
 	local local_server=$(nvram get socks5_enable)
-	[ "$local_server" == "nil" ] && return 1
+	[ -n "$local_server" ] && [ "$local_server" != "nil" ] || return 0
 	[ "$local_server" == "same" ] && local_server=$GLOBAL_SERVER
+	[ -n "$local_server" ] && [ "$local_server" != nil ] || return 0
 	local type=$(nvram get s5_type)
 	local bin=$(find_bin $type)
 	[ ! -f "$bin" ] && log "Global_Socks5:Can't find $bin program, can't start!" && return 1
 	case "$type" in
 	ss | ssr)
 		local name="Shadowsocks"
-		local bin=$(find_bin ss-local)
+		local bin=$(find_bin "$type-local")
 		[ ! -f "$bin" ] && log "Global_Socks5:Can't find $bin program, can't start!" && return 1
 		[ "$type" == "ssr" ] && name="ShadowsocksR"
-		gen_config_file $local_server 3 $s5_port
+		gen_config_file "$local_server" 3 "$s5_port" || return 1
 		run_bin $bin -c $CONFIG_SOCK5_FILE -u -f /var/run/ssr-local.pid
 		log "Global_Socks5:$name Started!"
 		;;
 	v2ray)
-		lua /etc_ro/ss/genv2config.lua $local_server tcp 0 $s5_port >/tmp/v2-ssr-local.json
-		sed -i 's/\\//g' /tmp/v2-ssr-local.json
-		run_bin $bin -config /tmp/v2-ssr-local.json
-		log "Global_Socks5:$($bin -version | head -1) Started!"
+		[ "$SS_CONFIG_READY" = 1 ] || proxy_local_config "$local_server" "$type" "$s5_port" || return 1
+		proxy_run_core "$bin" /tmp/v2-ssr-local.json "$s5_port" tcp || return 1
+		log "Global_Socks5:$($bin version | head -1) Started!"
 		;;
 	xray)
-		lua /etc_ro/ss/genxrayconfig.lua $local_server tcp 0 $s5_port >/tmp/v2-ssr-local.json
-		sed -i 's/\\//g' /tmp/v2-ssr-local.json
-		run_bin $bin -config /tmp/v2-ssr-local.json
-		log "Global_Socks5:$($bin -version | head -1) Started!"
+		[ "$SS_CONFIG_READY" = 1 ] || proxy_local_config "$local_server" "$type" "$s5_port" || return 1
+		run_bin "$bin" run -config /tmp/v2-ssr-local.json
+		proxy_wait_listener "$PROXY_RUN_PID" "$s5_port" tcp || return 1
+		log "本地 SOCKS5 监听已就绪。"
 		;;
 	trojan)
-		lua /etc_ro/ss/gentrojanconfig.lua $local_server client $s5_port >/tmp/trojan-ssr-local.json
-		sed -i 's/\\//g' /tmp/trojan-ssr-local.json
+		[ "$SS_CONFIG_READY" = 1 ] || proxy_local_config "$local_server" "$type" "$s5_port" || return 1
 		run_bin $bin --config /tmp/trojan-ssr-local.json
 		log "Global_Socks5:$($bin --version 2>&1 | head -1) Started!"
 		;;
@@ -424,16 +414,9 @@ start_local() {
 }
 
 rules() {
-	[ "$GLOBAL_SERVER" = "nil" ] && return 1
-	UDP_RELAY_SERVER=$(nvram get udp_relay_server)
-	if [ "$UDP_RELAY_SERVER" = "same" ]; then
-		UDP_RELAY_SERVER=$GLOBAL_SERVER
-	fi
-	if start_rules; then
-		return 0
-	else
-		return 1
-	fi
+	[ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ] || return 1
+	# 使用预检通过的节点选择，避免空值被误当作 UDP 节点。
+	start_rules
 }
 
 start_watchcat() {
@@ -463,27 +446,35 @@ EOF
 }
 
 # ================================= 启动 SS ===============================
-ssp_start() { 
-    ss_enable=`nvram get ss_enable`
-	if rules; then
-		cgroups_init
-		if start_redir_tcp; then
-			start_redir_udp
-			#start_AD
-			start_dns
+ssp_start() {
+	proxy_preflight || return 1
+	cgroups_init
+	if [ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ]; then
+		if ! start_redir_tcp || ! start_redir_udp; then
+			log "代理启动失败，未添加接管规则。"
+			kill_process
+			return 1
 		fi
 	fi
-	start_local
+	if ! start_local; then
+		log "本地代理启动失败，未添加接管规则。"
+		kill_process
+		return 1
+	fi
+	if [ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ]; then
+		if ! rules; then
+			log "代理规则建立失败，已撤销本服务规则。"
+			/usr/bin/ss-rules -f
+			kill_process
+			return 1
+		fi
+		start_dns
+	fi
 	start_watchcat
 	auto_update
-	ENABLE_SERVER=$(nvram get global_server)
-	[ "$ENABLE_SERVER" = "nil" ] && return 1
-	log "启动成功。"
-	log "内网IP控制为: $lancons"
+	log "代理服务启动完成。"
 	nvram set check_mode=0
-    if [ "$pppoemwan" = 0 ]; then
-        /usr/bin/detect.sh
-    fi
+	if [ "$pppoemwan" = 0 ]; then /usr/bin/detect.sh; fi
 }
 
 # ================================= 关闭SS ===============================
@@ -494,11 +485,7 @@ ssp_close() {
 	kill -9 $(ps | grep ss-monitor | grep -v grep | awk '{print $1}') >/dev/null 2>&1
 	kill_process
 	cgroups_cleanup
-	sed -i '/no-resolv/d' /etc/storage/dnsmasq/dnsmasq.conf
-	sed -i '/server=127.0.0.1/d' /etc/storage/dnsmasq/dnsmasq.conf
-	sed -i '/cdn/d' /etc/storage/dnsmasq/dnsmasq.conf
-	sed -i '/gfwlist/d' /etc/storage/dnsmasq/dnsmasq.conf
-	sed -i '/dnsmasq.oversea/d' /etc/storage/dnsmasq/dnsmasq.conf
+	proxy_dns_remove_owned
 	if [ -f "/etc/storage/dnsmasq-ss.d" ]; then
 		rm -f /etc/storage/dnsmasq-ss.d
 	fi
@@ -519,116 +506,109 @@ clear_iptable() {
 }
 
 kill_process() {
-	v2ray_process=$(pidof v2ray || pidof xray)
-	if [ -n "$v2ray_process" ]; then
-		log "关闭 V2Ray 进程..."
-		killall v2ray xray >/dev/null 2>&1
-		kill -9 "$v2ray_process" >/dev/null 2>&1
-	fi
+	proxy_stop_cores
 	ssredir=$(pidof ss-redir)
 	if [ -n "$ssredir" ]; then
 		log "关闭 ss-redir 进程..."
 		killall ss-redir >/dev/null 2>&1
-		kill -9 "$ssredir" >/dev/null 2>&1
+		killall -9 ss-redir >/dev/null 2>&1
 	fi
 
 	rssredir=$(pidof ssr-redir)
 	if [ -n "$rssredir" ]; then
 		log "关闭 ssr-redir 进程..."
 		killall ssr-redir >/dev/null 2>&1
-		kill -9 "$rssredir" >/dev/null 2>&1
+		killall -9 ssr-redir >/dev/null 2>&1
 	fi
 	
 	sslocal_process=$(pidof ss-local)
 	if [ -n "$sslocal_process" ]; then
 		log "关闭 ss-local 进程..."
 		killall ss-local >/dev/null 2>&1
-		kill -9 "$sslocal_process" >/dev/null 2>&1
+		killall -9 ss-local >/dev/null 2>&1
 	fi
 
 	trojandir=$(pidof trojan)
 	if [ -n "$trojandir" ]; then
 		log "关闭 trojan 进程..."
 		killall trojan >/dev/null 2>&1
-		kill -9 "$trojandir" >/dev/null 2>&1
+		killall -9 trojan >/dev/null 2>&1
 	fi
 	
 	ipt2socks_process=$(pidof ipt2socks)
 	if [ -n "$ipt2socks_process" ]; then
 		log "关闭 ipt2socks 进程..."
 		killall ipt2socks >/dev/null 2>&1
-		kill -9 "$ipt2socks_process" >/dev/null 2>&1
+		killall -9 ipt2socks >/dev/null 2>&1
 	fi
 
 	socks5_process=$(pidof srelay)
 	if [ -n "$socks5_process" ]; then
 		log "关闭 socks5 进程..."
 		killall srelay >/dev/null 2>&1
-		kill -9 "$socks5_process" >/dev/null 2>&1
+		killall -9 srelay >/dev/null 2>&1
 	fi
 
 	ssrs_process=$(pidof ssr-server)
 	if [ -n "$ssrs_process" ]; then
 		log "关闭 ssr-server 进程..."
 		killall ssr-server >/dev/null 2>&1
-		kill -9 "$ssrs_process" >/dev/null 2>&1
+		killall -9 ssr-server >/dev/null 2>&1
 	fi
 	
 	cnd_process=$(pidof chinadns-ng)
 	if [ -n "$cnd_process" ]; then
 		log "关闭 chinadns-ng 进程..."
 		killall chinadns-ng >/dev/null 2>&1
-		kill -9 "$cnd_process" >/dev/null 2>&1
+		killall -9 chinadns-ng >/dev/null 2>&1
 	fi
 
 	dns2tcp_process=$(pidof dns2tcp)
 	if [ -n "$dns2tcp_process" ]; then
 		log "关闭 dns2tcp 进程..."
 		killall dns2tcp >/dev/null 2>&1
-		kill -9 "$dns2tcp_process" >/dev/null 2>&1
+		killall -9 dns2tcp >/dev/null 2>&1
 	fi
 	
 	microsocks_process=$(pidof microsocks)
 	if [ -n "$microsocks_process" ]; then
 		log "关闭 socks5 服务端进程..."
 		killall microsocks >/dev/null 2>&1
-		kill -9 "$microsocks_process" >/dev/null 2>&1
+		killall -9 microsocks >/dev/null 2>&1
 	fi
 }
 
 # ================================= 重启 SS ===============================
 ressp() {
-	BACKUP_SERVER=$(nvram get backup_server)
-	start_redir $BACKUP_SERVER
-	start_rules $BACKUP_SERVER
-	start_dns
-	start_local
-	start_watchcat
-	auto_update
-	ENABLE_SERVER=$(nvram get global_server)
-	log "备用服务器启动成功"
-	log "内网IP控制为: $lancons"
+	GLOBAL_SERVER=$(nvram get backup_server)
+	[ -n "$GLOBAL_SERVER" ] && [ "$GLOBAL_SERVER" != nil ] || return 1
+	SS_CONFIG_READY=0
+	proxy_preflight || return 1
+	ssp_close
+	ssp_start
 }
 
-case $1 in
+# 父进程持有锁，执行子进程关闭该描述符，避免后台服务长期占锁。
+exec 9>/var/lock/shadowsocks.lock || exit 1
+flock -x 9 || exit 1
+(
+exec 9>&-
+case "$1" in
 start)
-	ssp_start
-	;;
-stop)
-	ssp_close
-	;;
+	[ "$(nvram get ss_enable)" = 1 ] || exit 0
+	if proxy_any_core_running; then log "代理核心已运行，修改配置请使用重启。"; exit 0; fi
+	ssp_start ;;
+stop) ssp_close ;;
 restart)
-	ssp_close
-	ssp_start
-	;;
-reserver)
-	ssp_close
-	ressp
-	;;
-*)
-	echo "check"
-	#exit 0
-	;;
+	if [ "$(nvram get ss_enable)" = 1 ]; then
+		proxy_preflight || exit 1
+		ssp_close
+		ssp_start
+	else
+		ssp_close
+	fi ;;
+reserver) ressp ;;
+check) proxy_preflight ;;
+*) echo "用法：$0 start|stop|restart|reserver|check"; exit 1 ;;
 esac
-
-
+)

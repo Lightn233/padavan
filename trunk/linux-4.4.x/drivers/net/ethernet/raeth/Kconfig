@@ -40,6 +40,15 @@ config  RAETH_ESW_CONTROL
 	bool "Embedded (or MT7530) Switch Control Module (VLAN/Isolation/Status)"
 	default y
 
+config RAETH_ESW_DEFER_PHY_POWER
+	bool "延后交换机 PHY 上电至 WAN/LAN 隔离完成"
+	depends on SOC_MT7621 && RAETH_ESW_CONTROL
+	default n
+	help
+	  保持内核初始化期间的 PHY 关闭状态，由 rc 的 init_bridge
+	  完成交换机隔离后调用 phy_ports_power 开启端口。
+	  目前仅 RM2100 配置启用，其他机型保持原有行为。
+
 config  RAETH_ESW_PORT_WAN
 	int "ESW WAN Port ID (0..4)"
 	depends on RAETH_ESW_CONTROL

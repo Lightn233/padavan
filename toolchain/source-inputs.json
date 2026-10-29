@@ -1,0 +1,42 @@
+{
+  "binutils": {
+    "path": "binutils-2.47.tar.xz",
+    "directory": "binutils-2.47",
+    "hash": "154ab23b60070e8f27013c22977f1129425d67d1e8acd6e13010e617811e4cff",
+    "url": "https://ftp.gnu.org/gnu/binutils/binutils-2.47.tar.xz"
+  },
+  "gcc": {
+    "path": "gcc-16.2.0.tar.xz",
+    "directory": "gcc-16.2.0",
+    "algorithm": "sha512",
+    "hash": "c51c30ca7422d0cbecf504b2e0f33c3aca31e0f90a76b65217f465163fa6fa17b3f5de39e145c47e5bab90ac0ce7fff3b03c8d553ae36e01faaea5a50f8648d1",
+    "url": "https://gcc.gnu.org/pub/gcc/releases/gcc-16.2.0/gcc-16.2.0.tar.xz"
+  },
+  "musl": {
+    "path": "musl-1.2.6.tar.gz",
+    "directory": "musl-1.2.6",
+    "hash": "d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a",
+    "url": "https://musl.libc.org/releases/musl-1.2.6.tar.gz"
+  },
+  "musl_patches": [
+    {
+      "path": "files/musl-qsort.patch",
+      "sha256": "1ee29f64f9ca8e8ad7c349779d661ff6b52126a27575d3586981357a52c406fb"
+    },
+    {
+      "path": "files/musl-regcomp.patch",
+      "sha256": "0cf0090ab433e8f9ed08ae03a0c93aff557c1d3e347260f62a61a10281f5333b"
+    },
+    {
+      "path": "files/musl-iconv.patch",
+      "sha256": "444fa70e52ca158fb7d4bad560637790bbf8f72e80b82fff840dd66fa83091e3"
+    }
+  ],
+  "supplemental_headers": [
+    {
+      "path": "files/queue.h",
+      "sha256": "8b284031772b1ba2035d9b05b24f2cb9b23e7bd324bcccb5e3fcc57d34aafa48",
+      "destination": "sys/queue.h"
+    }
+  ]
+}

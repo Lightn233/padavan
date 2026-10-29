@@ -183,3 +183,6 @@ CFLAGS += -Wno-pointer-sign
 
 CFLAGS += -Wno-unused
 
+
+# 保留升级前用户态 C 源码采用的语言规则；内核与 C++ 使用各自标准。
+CFLAGS += -std=gnu17

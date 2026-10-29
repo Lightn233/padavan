@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# 模块复制或依赖生成失败必须让构建失败，不能继续生成缺少功能的镜像。
+set -e
+
 depmod_bin="/sbin/depmod"
 
 # check env

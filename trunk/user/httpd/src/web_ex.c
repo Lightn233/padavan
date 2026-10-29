@@ -57,6 +57,8 @@
 #include "nvram_x.h"
 #include "httpd.h"
 #include "dbapi.h"
+#include <wifi5_policy.h>
+#include <wifi24_policy.h>
 #define GROUP_FLAG_REFRESH 	0
 #define GROUP_FLAG_DELETE 	1
 #define GROUP_FLAG_ADD 		2
@@ -79,7 +81,7 @@ static char post_json_buf[65535] = {0};
 static char next_host[128] = {0};
 static char SystemCmd[128] = {0};
 static int  group_del_map[MAX_GROUP_COUNT+2];
-extern void unescape(char *s);
+extern int unescape(char *s);
 extern struct evDesc events_desc[];
 extern int auth_nvram_changed;
 #if defined (SUPPORT_HTTPS)
@@ -372,53 +374,53 @@ write_textarea_to_file(const char* value, const char* dir_name, const char* file
 static void
 websScan(const char *query)
 {
-#define SCAN_MAX_VALUE_LEN 256
-	unsigned int i, flag, i_len;
-	const char *v1, *v2, *v3, *sp;
-	char groupid[64];
-	char value[SCAN_MAX_VALUE_LEN];
-
-	i = 0;
-	flag = 0;
-	groupid[0] = 0;
-
-	v1 = NULL;
-	if (strlen(query) > 1)
-		v1 = query;
-
-	while (v1!=NULL) {
-		v2 = strchr(v1+1, '=');
-		v3 = strchr(v1+1, '&');
-		if (!v2)
-			break;
-		
-		if (v3!=NULL) {
-			i_len = v3-v2-1;
-			if (i_len > (SCAN_MAX_VALUE_LEN - 1))
-				i_len = (SCAN_MAX_VALUE_LEN - 1);
-			strncpy(value, v2+1, i_len);
-			value[i_len] = 0;
-		} else {
-			snprintf(value, sizeof(value), "%s", v2+1);
-		}
-		
-		if (v2 != NULL && ((sp = strchr(v1+1, ' ')) == NULL || (sp > v2))) {
-			if (flag && strncmp(v1+1, groupid, strlen(groupid))==0) {
-				if (i < MAX_GROUP_COUNT) {
-					group_del_map[i] = atoi(value);
-					if (group_del_map[i]==-1)
+	char name[64], value[32], groupid[64];
+	const char *id = get_cgi("group_id"), *end, *eq;
+	char *last;
+	long index;
+	size_t n, k;
+	unsigned int count = 0;
+	group_del_map[0] = -1;
+	if (!id || !*id)
+		return;
+	if (strlen(id) > sizeof(groupid) - 3) {
+		http_input_error = 400;
+		return;
+	}
+	snprintf(groupid, sizeof(groupid), "%s_s", id);
+	/* 只匹配完整字段名，逐项读取重复的删除索引，避免前缀误匹配。 */
+	while (*query) {
+		end = query + strcspn(query, "&;");
+		eq = memchr(query, '=', end - query);
+		if (eq) {
+			n = eq - query;
+			if (n < sizeof(name)) {
+				memcpy(name, query, n); name[n] = 0;
+				if (unescape(name) == 0 && !strcmp(name, groupid)) {
+					k = end - eq - 1;
+					if (k >= sizeof(value))
+						goto invalid;
+					memcpy(value, eq + 1, k); value[k] = 0;
+					if (unescape(value) != 0 || !*value)
+						goto invalid;
+					index = strtol(value, &last, 10);
+					if (*last || index < -1 || index >= MAX_GROUP_COUNT)
+						goto invalid;
+					if (index == -1)
 						break;
-					i++;
+					if (count >= MAX_GROUP_COUNT)
+						goto invalid;
+					group_del_map[count++] = index;
 				}
-			} else if (strncmp(v1+1, "group_id", 8)==0) {
-				snprintf(groupid, sizeof(groupid), "%s_s", value);
-				flag = 1;
 			}
 		}
-		v1 = strchr(v1+1, '&');
+		query = *end ? end + 1 : end;
 	}
-
-	group_del_map[i] = -1;
+	group_del_map[count] = -1;
+	return;
+invalid:
+	group_del_map[0] = -1;
+	http_input_error = 400;
 }
 
 static void
@@ -640,7 +642,8 @@ ej_nvram_char_to_ascii(int eid, webs_t wp, int argc, char **argv)
 
 	char tmpstr[256];
 	memset(tmpstr, 0x0, sizeof(tmpstr));
-	char_to_ascii(tmpstr, nvram_safe_get(name));
+	if (char_to_ascii(tmpstr, sizeof(tmpstr), nvram_safe_get(name)) != 0)
+		return -1;
 	ret += websWrite(wp, "%s", tmpstr);
 
 	return ret;
@@ -964,7 +967,7 @@ validate_asp_apply(webs_t wp, int sid)
 			if (!strcmp(v->name, "wl_ssid"))
 			{
 				memset(buff, 0, sizeof(buff));
-				char_to_ascii(buff, value);
+				char_to_ascii(buff, sizeof(buff), value);
 				nvram_set("wl_ssid2", buff);
 			}
 			
@@ -1037,7 +1040,7 @@ validate_asp_apply(webs_t wp, int sid)
 			if (!strcmp(v->name, "rt_ssid"))
 			{
 				memset(buff, 0, sizeof(buff));
-				char_to_ascii(buff, value);
+				char_to_ascii(buff, sizeof(buff), value);
 				nvram_set("rt_ssid2", buff);
 			}
 			
@@ -1162,6 +1165,52 @@ pinvalidate(char *pin_string)
 }
 #endif
 
+#ifdef BOARD_WIFI5_POLICY
+static int wifi5_form_uint(const char *s, unsigned int max, unsigned int *out)
+{
+	unsigned int value = 0;
+	if (!s || !*s) return 0;
+	for (; *s; ++s) {
+		if (*s < '0' || *s > '9') return 0;
+		if (value > max / 10 || value * 10 + (*s - '0') > max) return 0;
+		value = value * 10 + (*s - '0');
+	}
+	*out = value;
+	return 1;
+}
+
+static int wifi24_validate_form(webs_t wp)
+{
+	unsigned int mode, gmode, power, ch, ext;
+	if (!websGetVar(wp, "rt_HT_BW", NULL) && !websGetVar(wp, "rt_gmode", NULL) &&
+		!websGetVar(wp, "rt_TxPower", NULL) && !websGetVar(wp, "rt_channel", NULL) &&
+		!websGetVar(wp, "rt_HT_EXTCHA", NULL) && !websGetVar(wp, "rt_country_code", NULL)) return 1;
+	if (!wifi5_form_uint(websGetVar(wp, "rt_HT_BW", nvram_safe_get("rt_HT_BW")), 3, &mode) ||
+		!wifi5_form_uint(websGetVar(wp, "rt_gmode", nvram_safe_get("rt_gmode")), 5, &gmode) ||
+		!wifi5_form_uint(websGetVar(wp, "rt_TxPower", nvram_safe_get("rt_TxPower")), 100, &power)) return 0;
+	if (mode >= 2 && gmode != 2 && gmode != 3 && gmode != 5) return 0;
+	if (mode != 3) return 1;
+	if (!wifi5_form_uint(websGetVar(wp, "rt_channel", nvram_safe_get("rt_channel")), 13, &ch) ||
+		!wifi5_form_uint(websGetVar(wp, "rt_HT_EXTCHA", nvram_safe_get("rt_HT_EXTCHA")), 1, &ext)) return 0;
+	return wifi24_fixed40_valid(websGetVar(wp, "rt_country_code", nvram_safe_get("rt_country_code")), ch, ext);
+}
+
+static int wifi5_validate_form(webs_t wp)
+{
+	unsigned int ch, mode, gmode, power;
+	const char *cc;
+	if (!websGetVar(wp, "wl_country_code", NULL) && !websGetVar(wp, "wl_channel", NULL) &&
+		!websGetVar(wp, "wl_HT_BW", NULL) && !websGetVar(wp, "wl_gmode", NULL) && !websGetVar(wp, "wl_TxPower", NULL)) return 1;
+	cc = websGetVar(wp, "wl_country_code", nvram_safe_get("wl_country_code"));
+	if (strlen(cc) != 2) return 0;
+	if (!wifi5_form_uint(websGetVar(wp, "wl_channel", nvram_safe_get("wl_channel")), 255, &ch) ||
+		!wifi5_form_uint(websGetVar(wp, "wl_HT_BW", nvram_safe_get("wl_HT_BW")), 4, &mode) ||
+		!wifi5_form_uint(websGetVar(wp, "wl_gmode", nvram_safe_get("wl_gmode")), 4, &gmode) ||
+		!wifi5_form_uint(websGetVar(wp, "wl_TxPower", nvram_safe_get("wl_TxPower")), 100, &power)) return 0;
+	return wifi5_config_valid(cc, ch, mode, gmode);
+}
+#endif
+
 static int
 update_variables_ex(int eid, webs_t wp, int argc, char **argv)
 {
@@ -1174,6 +1223,13 @@ update_variables_ex(int eid, webs_t wp, int argc, char **argv)
 
 	restart_needed_bits = 0;
 
+#ifdef BOARD_WIFI5_POLICY
+	/* 写入任何变量前先校验组合，防止网页以外的提交产生半更新状态。 */
+	if (!wifi5_validate_form(wp) || !wifi24_validate_form(wp)) {
+		websWrite(wp, "<script>parent.alert('区域、信道、带宽或功率组合不受支持，设置未保存。');parent.location.reload();</script>\n");
+		return 0;
+	}
+#endif
 	// assign control variables
 	action_mode = websGetVar(wp, "action_mode", "");
 	script = websGetVar(wp, "action_script", "");
@@ -2043,7 +2099,11 @@ applydb_cgi(webs_t wp, char *urlPrefix, char *webDir, int arg,
 	if ( !strcmp("", post_db_buf)){
 		//get
 		sprintf(post_db_buf, "%s", post_buf_backup+1);
-		unescape(post_db_buf);
+		if (unescape(post_db_buf) != 0) {
+		dbclient_end(&client);
+		websError(wp, 400, "Invalid form encoding");
+		return 0;
+	}
 		//logmessage("HTTPD", "url: %s,%s", post_db_buf, name);
 		strcpy(post_json_buf, post_db_buf);
 		result = strtok( post_json_buf, "&" );
@@ -2082,7 +2142,11 @@ applydb_cgi(webs_t wp, char *urlPrefix, char *webDir, int arg,
 	}
 	} else {
 	//post
-	unescape(post_db_buf);
+	if (unescape(post_db_buf) != 0) {
+		dbclient_end(&client);
+		websError(wp, 400, "Invalid form encoding");
+		return 0;
+	}
 	//logmessage("HTTPD", "name: %s post: %s", name, post_json_buf);
 	//logmessage("HTTPD", "name: %s post: %s", name, post_db_buf);
 	strcpy(post_json_buf, post_db_buf);
@@ -2881,6 +2945,33 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 		has_2g_11ax
 	);
 
+#ifdef BOARD_WIFI5_POLICY
+	{
+		unsigned int ri, ci, bit;
+		websWrite(wp, "function wifi5_policy(){return {");
+		for (ri = 0; ri < WIFI5_REGION_COUNT; ++ri) {
+			const struct wifi5_region *r = &wifi5_regions[ri];
+			int first = 1;
+			websWrite(wp, "%s\"%s\":{rd:\"%s\",channels:[", ri ? "," : "", r->cc, r->rd);
+			for (ci = 0; ci < WIFI5_CHANNEL_COUNT; ++ci) {
+				unsigned int ch = wifi5_channel_at(ci), bw = 0, dfs = 0;
+				if (!wifi5_channel_allowed(r->cc, ch)) continue;
+				for (bit = 0; bit < 4; ++bit) {
+					if (!wifi5_bw_allowed(r->cc, ch, 20U << bit)) continue;
+					bw |= 1U << bit;
+					if (wifi5_bw_needs_dfs(ch, 20U << bit)) dfs |= 1U << bit;
+				}
+				websWrite(wp, "%s[%u,%u,%u]", first ? "" : ",", ch, bw, dfs);
+				first = 0;
+			}
+			websWrite(wp, "]}");
+		}
+		websWrite(wp, "};}\n");
+	}
+#else
+	websWrite(wp, "function wifi5_policy(){return null;}\n");
+#endif
+
 	return 0;
 }
 
@@ -3345,7 +3436,7 @@ static int ej_system_status_hook(int eid, webs_t wp, int argc, char **argv)
 			      "idle: 0x%llx, iowait: 0x%llx, irq: 0x%llx, sirq: 0x%llx, total: 0x%llx}, "
 			"wifi2: {state: %d, guest: %d}, "
 			"wifi5: {state: %d, guest: %d}, "
-			"logmt: %ld }",
+			"logmt: %lld }",
 			LOAD_INT(info.loads[0]), LOAD_FRAC(info.loads[0]),
 			LOAD_INT(info.loads[1]), LOAD_FRAC(info.loads[1]),
 			LOAD_INT(info.loads[2]), LOAD_FRAC(info.loads[2]),
@@ -3355,7 +3446,7 @@ static int ej_system_status_hook(int eid, webs_t wp, int argc, char **argv)
 			cpu.busy, cpu.user, cpu.nice, cpu.system, cpu.idle, cpu.iowait, cpu.irq, cpu.sirq, cpu.total,
 			wifi2.radio, wifi2.ap_guest,
 			wifi5.radio, wifi5.ap_guest,
-			log.st_mtime
+			(long long)log.st_mtime
 		);
 
 	return 0;
@@ -3737,97 +3828,63 @@ nvram_remove_group_item(struct variable *v, int *delMap)
  * 2. 
  */
 
-static int 
+static int
 nvram_add_group_table(webs_t wp, char *serviceId, struct variable *v, int count)
 {
-    struct variable *gv;
-    char buf[NVRAM_MAX_VALUE_LEN];
-    char bufs[NVRAM_MAX_VALUE_LEN*2];
-    int i, j, fieldLen, rowLen, fieldCount, value;
-    int addlen=0;
-
-    if (v->argv[0]==NULL) 
-    {
-       return 0;
-    }
-
-    bufs[0] = 0x0;
-    rowLen = atoi(v->argv[2]);
-
-    if (count==-1)
-    {
-       for (i=0;i<rowLen;i++)
-       {
-           bufs[i] = ' ';
-       }
-       value = -1;
-       bufs[i] = 0x0;
-
-       goto ToHTML;
-    }
-
-    fieldCount = 0;
-
-    value = count;
-
-    for (gv = (struct variable *)v->argv[0]; gv->name!=NULL; gv++)
-    {
-    	strcpy(buf, nvram_get_list_x(gv->name, count));
-    	addlen=0;
-    	
-    	fieldLen = atoi(gv->longname)+addlen;
-    	rowLen+=addlen;
-    	
-    	if (fieldLen!=0)
-    	{
-    	   if (strlen(buf)>fieldLen)
-    	   {
-    	      buf[fieldLen] = 0x0;
-    	   }
-    	   else
-    	   {
-    	      i = strlen(buf);
-    	      j = i;
-    	      for (;i<fieldLen;i++)
-    	      {
-    		 buf[j++] = ' ';
-    	      }
-    	      buf[j] = 0x0;
-    	   }
-    	}
-    	
-    	if (fieldCount==0)
-    	   sprintf(bufs, "%s", buf);
-    	else
-    	   snprintf(bufs, sizeof(bufs), "%s%s", bufs, buf);
-    	
-    	fieldCount++;
-    }
-
-    if (strlen(bufs) > rowLen)
-       bufs[rowLen] = 0x0;
-
-ToHTML:
-    /* Replace ' ' to &nbsp; */
-    buf[0] = 0;
-    j = 0;
-
-    for (i=0; i<strlen(bufs);i++)
-    {
-    	if (bufs[i] == ' ')
-    	{
-    	   buf[j++] = '&';
-    	   buf[j++] = 'n';
-    	   buf[j++] = 'b';
-    	   buf[j++] = 's';
-    	   buf[j++] = 'p';
-    	   buf[j++] = ';';
-    	}
-    	else buf[j++] = bufs[i];
-    }
-    buf[j] = 0x0;
-
-    return (websWrite(wp, "<option value=\"%d\">%s</option>", value, buf));
+	struct variable *gv;
+	char row[NVRAM_MAX_VALUE_LEN];
+	size_t used = 0, take, width, length, limit, j;
+	int row_len, field_len, written;
+	const char *value, *escaped;
+	(void)serviceId;
+	if (!v->argv[0] || !v->argv[2])
+		return 0;
+	row_len = atoi(v->argv[2]);
+	if (row_len < 0 || row_len >= sizeof(row))
+		return 0;
+	limit = row_len;
+	if (count == -1) {
+		memset(row, ' ', limit);
+		used = limit;
+	} else {
+		for (gv = (struct variable *)v->argv[0]; gv->name && used < limit; gv++) {
+			field_len = gv->longname ? atoi(gv->longname) : 0;
+			if (field_len < 0)
+				return 0;
+			value = nvram_get_list_x(gv->name, count);
+			if (!value)
+				value = "";
+			width = field_len ? (size_t)field_len : limit - used;
+			if (width > limit - used)
+				width = limit - used;
+			length = strnlen(value, width);
+			take = field_len ? width : length;
+			memcpy(row + used, value, length);
+			memset(row + used + length, ' ', take - length);
+			used += take;
+		}
+	}
+	written = websWrite(wp, "<option value=\"%d\">", count);
+	/* 直接写入带缓冲的输出流，不把实体展开到固定大小的栈数组。 */
+	for (j = 0; j < used; j++) {
+		switch (row[j]) {
+		case ' ': escaped = "&nbsp;"; break;
+		case '&': escaped = "&amp;"; break;
+		case '<': escaped = "&lt;"; break;
+		case '>': escaped = "&gt;"; break;
+		case '"': escaped = "&quot;"; break;
+		case '\'': escaped = "&#39;"; break;
+		default:
+			if (fputc((unsigned char)row[j], wp) == EOF)
+				return -1;
+			written++;
+			continue;
+		}
+		if (fputs(escaped, wp) == EOF)
+			return -1;
+		written += strlen(escaped);
+	}
+	return written + websWrite(wp, "</option>");
 }
 
 static int
@@ -3906,69 +3963,67 @@ do_cgi_clear(void)
 void
 do_uncgi_query(const char *query)
 {
-	size_t query_len;
-
-	init_cgi(NULL);
-
-	query_len = MIN(strlen(query), sizeof(post_buf)-1);
-	if (query_len > 0)
-		strncpy(post_buf, query, query_len);
-	post_buf[query_len] = 0;
-
-	if (strlen(post_buf) > 0)
-		init_cgi(post_buf);
+    size_t query_len = strlen(query);
+    init_cgi(NULL);
+    post_buf[0] = 0;
+    if (query_len >= sizeof(post_buf)) { http_input_error = 413; return; }
+    memcpy(post_buf, query, query_len + 1);
+    http_input_error = init_cgi(post_buf);
 }
+
+static int read_form_body(FILE *stream, int clen);
 #if defined(APP_SHADOWSOCKS)
-static void do_html_post_and_get(char *url, FILE *stream, int len, char *boundary){
-	char *query = NULL;
-
-	init_cgi(NULL);
-
-	memset(post_buf, 0, sizeof(post_buf));
-	memset(post_buf_backup, 0, sizeof(post_buf));
-	memset(post_json_buf, 0, sizeof(post_json_buf));
-
-	if (fgets(post_buf, MIN(len+1, sizeof(post_buf)), stream)){
-		len -= strlen(post_buf);
-
-		while (len--)
-			(void)fgetc(stream);
-	}
-	sprintf(post_json_buf, "%s", post_buf);
-
-	query = url;
-	query = strsep(&query, "?");
-
-	if (query && strlen(query) > 0){
-		if (strlen(post_buf) > 0)
-			sprintf(post_buf_backup, "?%s&%s", post_buf, query);
-		else
-			sprintf(post_buf_backup, "?%s", query);
-		sprintf(post_buf, "%s", post_buf_backup+1);
-	}
-	else if (strlen(post_buf) > 0)
-		sprintf(post_buf_backup, "?%s", post_buf);
-	//websScan(post_buf_backup);
-	init_cgi(post_buf);
+static void do_html_post_and_get(const char *url, FILE *stream, int len, char *boundary)
+{
+    const char *query = strchr(url, '?');
+    int written;
+    (void)boundary;
+    http_input_error = read_form_body(stream, len);
+    if (http_input_error) return;
+    memcpy(post_json_buf, post_buf, strlen(post_buf) + 1);
+    if (query && query[1]) {
+        query++;
+        written = snprintf(post_buf_backup, sizeof(post_buf_backup), "?%s%s%s",
+                           post_buf, *post_buf ? "&" : "", query);
+    } else {
+        written = snprintf(post_buf_backup, sizeof(post_buf_backup), "?%s", post_buf);
+    }
+    if (written < 0 || (size_t)written >= sizeof(post_buf_backup)) {
+        http_input_error = 413; return;
+    }
+    memcpy(post_buf, post_buf_backup + 1, (size_t)written);
+    http_input_error = init_cgi(post_buf);
 }
+
 #endif
+/* 表单必须完整接收；不再截断后继续执行设置，也不在 EOF 后反复空读。 */
+static int
+read_form_body(FILE *stream, int clen)
+{
+    init_cgi(NULL);
+    post_buf[0] = 0;
+    if (clen < 0) return 400;
+    if ((size_t)clen >= sizeof(post_buf)) return 413;
+    if (clen && fread(post_buf, 1, (size_t)clen, stream) != (size_t)clen) return 400;
+    if (memchr(post_buf, 0, (size_t)clen)) return 400;
+    post_buf[clen] = 0;
+    return 0;
+}
+
 static void
 do_html_apply_post(const char *url, FILE *stream, int clen, char *boundary)
 {
-	init_cgi(NULL);
-
-	group_del_map[0] = -1;
-
-	post_buf[0] = 0;
-	if (!fgets(post_buf, MIN(clen+1, sizeof(post_buf)), stream))
-		return;
-
-	clen -= strlen(post_buf);
-	while (clen--)
-		fgetc(stream);
-
-	websScan(post_buf);
-	init_cgi(post_buf);
+    group_del_map[0] = -1;
+    http_input_error = read_form_body(stream, clen);
+    if (http_input_error) return;
+    {
+        char *raw = strdup(post_buf);
+        if (!raw) { http_input_error = 500; return; }
+        http_input_error = init_cgi(post_buf);
+        if (!http_input_error)
+            websScan(raw);
+        free(raw);
+    }
 }
 
 static void
@@ -4154,7 +4209,21 @@ static char mentohust_log_txt[] =
 
 #endif
 
+#if defined(APP_ADGUARDHOME)
+#include "adguardhome_backup_http.h"
+#endif
+
+#if defined(APP_DDNS_GO)
+#include "ddns_go_http.h"
+#endif
+
 struct mime_handler mime_handlers[] = {
+#if defined(APP_DDNS_GO)
+    { "ddns_go.asp", "application/json", no_cache_IE, do_ddns_go_post, do_ddns_go, 1 },
+#endif
+#if defined(APP_ADGUARDHOME)
+    { "adguardhome_backup.asp", "application/json", no_cache_IE, do_agh_backup_post, do_agh_backup, 1 },
+#endif
 	/* cached javascript files w/o translations */
 	{ "jquery.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "**bootstrap.min.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
@@ -4421,6 +4490,28 @@ ej_available_disk_names_and_sizes(int eid, webs_t wp, int argc, char **argv)
 }
 #endif
 
+static int ej_optional_service_support(int eid, webs_t wp, int argc, char **argv)
+{
+    (void)eid; (void)argc; (void)argv;
+    websWrite(wp, "function support_udpxy(){return %d;}\n", (access("/sbin/udpxy", X_OK) == 0));
+#if defined(APP_DDNS_GO)
+    websWrite(wp, "function support_ddns_go(){return 1;}\n");
+#else
+    websWrite(wp, "function support_ddns_go(){return 0;}\n");
+#endif
+#if defined(APP_MSD_LITE)
+    websWrite(wp, "function support_msd_lite(){return 1;}\n");
+#else
+    websWrite(wp, "function support_msd_lite(){return 0;}\n");
+#endif
+#if defined(APP_RTP2HTTPD)
+    websWrite(wp, "function support_rtp2httpd(){return 1;}\n");
+#else
+    websWrite(wp, "function support_rtp2httpd(){return 0;}\n");
+#endif
+    return 0;
+}
+
 struct ej_handler ej_handlers[] =
 {
 	{ "nvram_get_x", ej_nvram_get_x},
@@ -4434,6 +4525,7 @@ struct ej_handler ej_handlers[] =
 	{ "uptime", ej_uptime},
 	{ "nvram_dump", ej_dump},
 	{ "firmware_caps_hook", ej_firmware_caps_hook},
+	{ "optional_service_support", ej_optional_service_support},
 	{ "json_system_status", ej_system_status_hook},
 
 	{ "netdev", ej_netdev},

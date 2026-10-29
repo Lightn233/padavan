@@ -1,0 +1,21 @@
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -707,8 +707,18 @@
+ const u8 * wpa_sm_get_auth_addr(struct wpa_sm *sm);
+ struct wpabuf * wpa_sm_known_sta_identification(struct wpa_sm *sm, const u8 *aa,
+ 						u64 timestamp);
++#ifndef CONFIG_NO_WPA
+ int wpa_sm_install_mlo_group_keys(struct wpa_sm *sm, const u8 *key_data,
+ 				  size_t key_data_len, u16 added_links_bitmap);
++#else
++/* 有线认证构建不安装无线 MLO 密钥。 */
++static inline int
++wpa_sm_install_mlo_group_keys(struct wpa_sm *sm, const u8 *key_data,
++			      size_t key_data_len, u16 added_links_bitmap)
++{
++	return -1;
++}
++#endif
+ bool wpa_sm_pmksa_privacy_supported(struct wpa_sm *sm);
+ 
+ void wpa_sm_set_802_1x_auth_caps(struct wpa_sm *sm, u64 flags2);

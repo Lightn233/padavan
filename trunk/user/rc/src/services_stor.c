@@ -261,16 +261,13 @@ write_smb_conf(void)
 	if (i_maxuser > MAX_CLIENTS_NUM) i_maxuser = MAX_CLIENTS_NUM;
 
 	fprintf(fp, "max connections = %d\n", i_maxuser);
-	fprintf(fp, "use spnego = no\n");		// ASUS add
-	fprintf(fp, "client use spnego = no\n");	// ASUS add
 	fprintf(fp, "null passwords = yes\n");		// ASUS add
 	fprintf(fp, "strict allocate = no\n");		// ASUS add
 	fprintf(fp, "use sendfile = yes\n");
 	fprintf(fp, "dos filemode = yes\n");
 	fprintf(fp, "dos filetimes = yes\n");
-	fprintf(fp, "dos filetime resolution = yes\n");
 	fprintf(fp, "access based share enum = yes\n");
-	fprintf(fp, "veto files = /Thumbs.db/.DS_Store/._*/.apdisk/.TemporaryItems/");
+	fprintf(fp, "veto files = /Thumbs.db/.DS_Store/._*/.apdisk/.TemporaryItems/\n");
 	fprintf(fp, "delete veto files = yes\n");
 	fprintf(fp, "\n");
 
@@ -504,7 +501,9 @@ stop_samba(int force_stop)
 {
 	char* svcs[] = { "smbd",
 #if defined (APP_SMBD36)
-	"wsdd2" ,
+	"wsdd2", "samba-dcerpcd", "samba-bgqd",
+	"rpcd_classic", "rpcd_lsad", "rpcd_epmapper", "rpcd_mdssvc",
+	"rpcd_winreg", "rpcd_fsrvp", "rpcd_spoolss",
 #endif
 	 "nmbd", NULL };
 
@@ -527,14 +526,14 @@ void run_samba(void)
 {
 	int sh_num, has_nmbd, has_smbd, i;
 	char tmpuser[40], tmp2[40];
-	char cmd[256];
 
 	if (nvram_match("enable_samba", "0") || nvram_match("st_samba_mode", "0"))
 		return;
 
 	recreate_passwd_unix(0);
 
-	mkdir_if_none("/etc/samba", "777");
+	mkdir_if_none("/etc/samba", "700");
+	chmod("/etc/samba", 0700);
 
 	has_smbd = pids("smbd");
 	has_nmbd = pids("nmbd");
@@ -550,8 +549,9 @@ void run_samba(void)
 	for (i = 0; i < sh_num; i++) {
 		snprintf(tmpuser, sizeof(tmpuser), "acc_username%d", i);
 		snprintf(tmp2, sizeof(tmp2), "acc_password%d", i);
-		snprintf(cmd, sizeof(cmd), "smbpasswd %s %s", nvram_safe_get(tmpuser), nvram_safe_get(tmp2));
-		system(cmd);
+		/* 分开传递参数，密码中的空格与特殊字符不再交给 shell 解释。 */
+		if (eval("smbpasswd", nvram_safe_get(tmpuser), nvram_safe_get(tmp2)) != 0)
+			logmessage("Samba Server", "共享账户创建失败");
 	}
 
 	config_smb_fastpath(0);

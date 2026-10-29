@@ -17,3 +17,6 @@
 #define BOARD_NUM_ETH_EPHY	4
 #define BOARD_HAS_EPHY_L1000	1
 #define BOARD_HAS_EPHY_W1000	1
+
+/* 本机启用统一的 5 GHz 区域、DFS 与固定带宽校验。 */
+#define BOARD_WIFI5_POLICY 1

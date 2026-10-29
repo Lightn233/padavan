@@ -1,0 +1,31 @@
+--- a/src/platform_compat.h
++++ b/src/platform_compat.h
+@@ -375,7 +375,27 @@
+   errno = EAFNOSUPPORT;
+   return -1;
+ #else
+-  return platform_mcast_modern_group_op(sock, family, group, group_len, source, source_len, ifindex, is_join);
++  int result = platform_mcast_modern_group_op(sock, family, group, group_len, source, source_len, ifindex, is_join);
++  /* 仅在通用接口不可用时回退；不能把带源过滤的请求降级为任意源。 */
++  if (result == 0 || errno != ENOPROTOOPT || source) return result;
++#ifdef __linux__
++  if (family == AF_INET && group && group_len >= sizeof(struct sockaddr_in)) {
++    struct ip_mreqn req;
++    memset(&req, 0, sizeof(req));
++    req.imr_multiaddr = ((const struct sockaddr_in *)group)->sin_addr;
++    req.imr_ifindex = (int)ifindex;
++    return setsockopt(sock, IPPROTO_IP, is_join ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP, &req, sizeof(req));
++  }
++  if (family == AF_INET6 && group && group_len >= sizeof(struct sockaddr_in6)) {
++    const struct sockaddr_in6 *g = (const struct sockaddr_in6 *)group;
++    struct ipv6_mreq req;
++    memset(&req, 0, sizeof(req));
++    req.ipv6mr_multiaddr = g->sin6_addr;
++    req.ipv6mr_interface = ifindex ? ifindex : g->sin6_scope_id;
++    return setsockopt(sock, IPPROTO_IPV6, is_join ? IPV6_JOIN_GROUP : IPV6_LEAVE_GROUP, &req, sizeof(req));
++  }
++#endif
++  return result;
+ #endif
+ }
+ 

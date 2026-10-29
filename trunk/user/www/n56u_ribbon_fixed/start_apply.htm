@@ -72,6 +72,11 @@ function initial(){
 		setTimeout("parent.parent.checkDDNSReturnCode();", 1000);
 	}
 	else if(page_modified == 1){
+		// 模式切换使用专用提示；AP 的新管理地址不能由旧 LAN 地址推断。
+		if(current_page == "Advanced_OperationMode_Content.asp" && typeof parent.modeSwitchCommitted == "function"){
+			parent.modeSwitchCommitted(restart_time);
+			return;
+		}
 		parent.showLoading(restart_time, "waiting");
 		if(current_page.length > 0){
 			if(current_page.indexOf("clients.asp") >= 0){

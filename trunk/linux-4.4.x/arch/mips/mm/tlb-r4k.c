@@ -13,6 +13,9 @@
 #include <linux/sched.h>
 #include <linux/smp.h>
 #include <linux/mm.h>
+#include <linux/memblock.h>
+#include <linux/slab.h>
+#include <linux/sort.h>
 #include <linux/hugetlb.h>
 #include <linux/module.h>
 
@@ -23,6 +26,7 @@
 #include <asm/pgtable.h>
 #include <asm/tlb.h>
 #include <asm/tlbmisc.h>
+#include <asm/tlbdebug.h>
 
 extern void build_tlb_refill_handler(void);
 
@@ -474,6 +478,236 @@ static int __init set_ntlb(char *str)
 __setup("ntlb=", set_ntlb);
 
 /*
+ * 初始化前先读取全部映射，按保留项、全局项、虚拟页及 ASID 排序。
+ * 写入阶段避开已有映射的整个大页范围，不使用可能多重命中的 TLBP。
+ * 工作区按真实 TLB 容量分配，启动阶段用 memblock，恢复阶段用 GFP_ATOMIC。
+ * 算法来自 Linux stable v5.10.258；旧分支接口对应关系见移植记录。
+ */
+#define VPN2_SHIFT 13
+
+static inline unsigned long long read_c0_entryhi_native(void)
+{
+	return cpu_has_64bits ? __read_64bit_c0_register($10, 0) : read_c0_entryhi();
+}
+
+static inline void write_c0_entryhi_native(unsigned long long v)
+{
+	if (cpu_has_64bits)
+		__write_64bit_c0_register($10, 0, v);
+	else
+		write_c0_entryhi(v);
+}
+
+struct tlbent {
+	unsigned long long wired:1;
+	unsigned long long global:1;
+	unsigned long long asid:10;
+	unsigned long long vpn:51;
+	unsigned long long pagesz:5;
+	unsigned long long index:14;
+};
+
+static int r4k_entry_cmp(const void *a, const void *b)
+{
+	struct tlbent ea = *(struct tlbent *)a, eb = *(struct tlbent *)b;
+
+	if (ea.wired > eb.wired)
+		return -1;
+	else if (ea.wired < eb.wired)
+		return 1;
+	else if (ea.global > eb.global)
+		return -1;
+	else if (ea.global < eb.global)
+		return 1;
+	else if (ea.vpn < eb.vpn)
+		return -1;
+	else if (ea.vpn > eb.vpn)
+		return 1;
+	else if (ea.asid < eb.asid)
+		return -1;
+	else if (ea.asid > eb.asid)
+		return 1;
+	else if (ea.pagesz > eb.pagesz)
+		return -1;
+	else if (ea.pagesz < eb.pagesz)
+		return 1;
+	else
+		return 0;
+}
+
+static void __ref r4k_tlb_uniquify_read(struct tlbent *tlb_vpns, int tlbsize)
+{
+	int start = read_c0_wired();
+	unsigned long long vpn_mask;
+	bool global;
+	int i;
+
+	vpn_mask = GENMASK_ULL(cpu_vmbits - 1, VPN2_SHIFT);
+	vpn_mask |= cpu_has_64bits ? 3ULL << 62 : 1ULL << 31;
+
+	for (i = 0; i < tlbsize; i++) {
+		unsigned long long entryhi, vpn, mask, asid;
+		unsigned int pagesz;
+
+		write_c0_index(i);
+		mtc0_tlbr_hazard();
+		tlb_read();
+		tlb_read_hazard();
+
+		global = !!(read_c0_entrylo0() & ENTRYLO_G);
+		entryhi = read_c0_entryhi_native();
+		mask = read_c0_pagemask();
+
+		asid = entryhi & ASID_MASK;
+		vpn = (entryhi & vpn_mask & ~mask) >> VPN2_SHIFT;
+		pagesz = ilog2((mask >> VPN2_SHIFT) + 1);
+
+		tlb_vpns[i].global = global;
+		tlb_vpns[i].asid = global ? 0 : asid;
+		tlb_vpns[i].vpn = vpn;
+		tlb_vpns[i].pagesz = pagesz;
+		tlb_vpns[i].wired = i < start;
+		tlb_vpns[i].index = i;
+	}
+}
+
+static void __ref r4k_tlb_uniquify_write(struct tlbent *tlb_vpns, int tlbsize)
+{
+	unsigned long long asid, vpn, vpn_size, pagesz;
+	int widx, gidx, idx, sidx, lidx, i;
+
+	vpn_size = 1ULL << (cpu_vmbits - VPN2_SHIFT);
+	pagesz = ilog2((PM_4K >> VPN2_SHIFT) + 1);
+
+	write_c0_pagemask(PM_4K);
+	write_c0_entrylo0(0);
+	write_c0_entrylo1(0);
+
+	asid = 0;
+	vpn = 0;
+	widx = 0;
+	gidx = 0;
+	for (sidx = 0; sidx < tlbsize && tlb_vpns[sidx].wired; sidx++)
+		;
+	for (lidx = sidx; lidx < tlbsize && tlb_vpns[lidx].global; lidx++)
+		;
+	idx = gidx = sidx + 1;
+	for (i = sidx; i < tlbsize; i++) {
+		unsigned long long entryhi, vpn_pagesz = 0;
+
+		while (1) {
+			if (WARN_ON(vpn >= vpn_size)) {
+				dump_tlb_all();
+				
+				return;
+			}
+
+			if (widx < sidx && vpn >= tlb_vpns[widx].vpn) {
+				vpn = max(vpn,
+					  (tlb_vpns[widx].vpn +
+					   (1ULL << tlb_vpns[widx].pagesz)));
+				asid = 0;
+				widx++;
+				continue;
+			}
+			
+			if (gidx < lidx && vpn >= tlb_vpns[gidx].vpn) {
+				vpn = max(vpn,
+					  (tlb_vpns[gidx].vpn +
+					   (1ULL << tlb_vpns[gidx].pagesz)));
+				asid = 0;
+				gidx++;
+				continue;
+			}
+			
+			if (idx < tlbsize && vpn == tlb_vpns[idx].vpn &&
+			    asid == tlb_vpns[idx].asid) {
+				unsigned long long idx_pagesz;
+
+				idx_pagesz = tlb_vpns[idx].pagesz;
+				vpn_pagesz = max(vpn_pagesz, idx_pagesz);
+				do
+					idx++;
+				while (idx < tlbsize &&
+				       vpn == tlb_vpns[idx].vpn &&
+				       asid == tlb_vpns[idx].asid);
+				asid++;
+				if (asid > ASID_MASK) {
+					vpn += 1ULL << vpn_pagesz;
+					asid = 0;
+					vpn_pagesz = 0;
+				}
+				continue;
+			}
+			
+			if (idx < tlbsize && vpn > tlb_vpns[idx].vpn) {
+				vpn = max(vpn,
+					  (tlb_vpns[idx].vpn +
+					   (1ULL << tlb_vpns[idx].pagesz)));
+				asid = 0;
+				idx++;
+				continue;
+			}
+			break;
+		}
+
+		entryhi = (vpn << VPN2_SHIFT) | asid;
+		write_c0_entryhi_native(entryhi);
+		write_c0_index(tlb_vpns[i].index);
+		mtc0_tlbw_hazard();
+		tlb_write_indexed();
+
+		tlb_vpns[i].asid = asid;
+		tlb_vpns[i].vpn = vpn;
+		tlb_vpns[i].pagesz = pagesz;
+
+		asid++;
+		if (asid > ASID_MASK) {
+			vpn += 1ULL << pagesz;
+			asid = 0;
+		}
+	}
+}
+
+static void __ref r4k_tlb_uniquify(void)
+{
+	int tlbsize = current_cpu_data.tlbsize;
+	bool use_slab = slab_is_available();
+	phys_addr_t tlb_vpn_size;
+	struct tlbent *tlb_vpns;
+
+	tlb_vpn_size = tlbsize * sizeof(*tlb_vpns);
+	if (use_slab) {
+		tlb_vpns = kmalloc(tlb_vpn_size, GFP_ATOMIC);
+	} else {
+		/* 4.4 的 memblock_alloc 返回物理地址，需要显式转换。 */
+		phys_addr_t base = memblock_alloc(tlb_vpn_size,
+						 sizeof(*tlb_vpns));
+		tlb_vpns = base ? __va(base) : NULL;
+	}
+	if (WARN_ON(!tlb_vpns))
+		return; 
+
+	htw_stop();
+
+	r4k_tlb_uniquify_read(tlb_vpns, tlbsize);
+
+	sort(tlb_vpns, tlbsize, sizeof(*tlb_vpns), r4k_entry_cmp, NULL);
+
+	r4k_tlb_uniquify_write(tlb_vpns, tlbsize);
+
+	write_c0_pagemask(PM_DEFAULT_MASK);
+
+	tlbw_use_hazard();
+	htw_start();
+	flush_itlb();
+	if (use_slab)
+		kfree(tlb_vpns);
+	else
+		memblock_free(__pa(tlb_vpns), tlb_vpn_size);
+}
+
+/*
  * Configure TLB (for init or after a CPU has been powered off).
  */
 static void r4k_tlb_configure(void)
@@ -507,7 +741,9 @@ static void r4k_tlb_configure(void)
 
 	temp_tlb_entry = current_cpu_data.tlbsize - 1;
 
-	/* From this point on the ARC firmware is dead.	 */
+	/* 无硬件失效指令的 CPU 先消除重复映射，再做常规刷新。 */
+	if (!cpu_has_tlbinv)
+		r4k_tlb_uniquify();
 	local_flush_tlb_all();
 
 	/* Did I tell you that ARC SUCKS?  */

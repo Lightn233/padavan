@@ -17,6 +17,64 @@
 <script type="text/javascript" src="/popup.js"></script>
 <script>
 var $j = jQuery.noConflict();
+var modeSubmitting = false;
+var modeTarget = "";
+var modeAcknowledged = false;
+var modeSubmitTimer = null;
+
+function showModeStatus(message, offerRouterLink){
+	var loading = document.getElementById("Loading");
+	if (loading) loading.style.display = "none";
+	document.getElementById("modeSwitchStatus").style.display = "block";
+	document.getElementById("modeSwitchMessage").textContent = message;
+	var link = document.getElementById("modeSwitchLink");
+	link.style.display = "none";
+	if (offerRouterLink) {
+		var address = document.form.lan_ipaddr.value;
+		if (/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/.test(address)) {
+			link.href = location.protocol + "//" + address + (location.port ? ":" + location.port : "") + "/";
+			link.textContent = "尝试打开 " + address;
+			link.style.display = "inline";
+		}
+	}
+}
+
+function modeSwitchCommitted(seconds){
+	if (!modeSubmitting || modeAcknowledged) return;
+	modeAcknowledged = true;
+	clearTimeout(modeSubmitTimer);
+	seconds = Number(seconds);
+	if (!isFinite(seconds) || seconds <= 0 || seconds > 600) {
+		showModeStatus("已收到保存响应，但未取得有效的重启等待时间。请勿重复保存；请刷新并核对实际模式，必要时手动重启。", false);
+		return;
+	}
+	// 重启估计时间不代表终端已经完成 DHCP；先留出自动获取地址的观察窗口。
+	var started = Date.now();
+	var rebootSeconds = Math.ceil(seconds);
+	var addressSeconds = Math.max(rebootSeconds, 120);
+	function tick(){
+		var elapsed = Math.floor((Date.now() - started) / 1000);
+		var remaining = rebootSeconds - elapsed;
+		if (remaining > 0) {
+			showModeStatus("已提交保存和重启请求，预计还需 " + remaining + " 秒。期间连接会暂时中断，请勿重复操作。", false);
+			setTimeout(tick, 1000);
+			return;
+		}
+		if (elapsed < addressSeconds) {
+			var addressHint = modeTarget == "3"
+				? "AP 的管理地址可能由上级重新分配，请到上级路由器的设备列表查找。"
+				: "取得独立 LAN 网段地址后，可使用下方入口访问。";
+			showModeStatus("重启预计等待阶段已结束，终端可能仍在自动获取新地址。请先等待，无需立即手动续租或重复切换。" + addressHint + " 本页尚未确认设备及地址是否就绪。", modeTarget != "3");
+			setTimeout(tick, 1000);
+			return;
+		}
+		if (modeTarget == "3")
+			showModeStatus("自动获取地址的观察时间已到，本页无法确认网络是否恢复。请先查看终端当前地址，并到上级的已连接设备列表查找 AP 管理地址；若 AP 使用静态地址，请使用该静态地址。只有仍保留旧网段或没有地址时，再尝试重连网络或手动续租。本页不会自动跳回旧路由地址。", false);
+		else
+			showModeStatus("自动获取地址的观察时间已到，本页无法确认网络是否恢复。若终端已取得独立 LAN 网段地址，请打开下方管理地址；只有仍保留旧网段或没有地址时，再尝试重连网络或手动续租，并检查设备是否完成重启。本页不会重复提交切换。", true);
+	}
+	tick();
+}
 
 function initial(){
 	show_banner(2);
@@ -42,6 +100,7 @@ function initial(){
 }
 
 function saveMode(){
+	if (modeSubmitting) return false;
 	var o1 = document.form.sw_mode;
 	if(sw_mode == '1'){
 		if(o1[0].checked == true){
@@ -60,6 +119,24 @@ function saveMode(){
 		}
 	}
 
+	var selected = "";
+	for (var i = 0; i < o1.length; i++) if (o1[i].checked) selected = o1[i].value;
+	if (!selected) return false;
+	var details = selected == "3"
+		? "切换为 AP 后，将停止路由器的 NAT、DHCP 和现有 DNS 接管，AdGuardHome 可能停止。终端将使用上级网络，管理地址可能由上级重新分配。"
+		: "切换为路由器后，恢复独立 LAN 网段和相应路由服务。终端需要重新获取地址，请使用设置的 LAN 管理地址重新访问。";
+	if (!confirm(details + "\n\n确认保存并立即重启路由器 吗？重启期间连接会暂时中断；取消则不保存。")) {
+		for (var j = 0; j < o1.length; j++) o1[j].checked = o1[j].value == sw_mode;
+		setScenerion(sw_mode);
+		return false;
+	}
+	modeSubmitting = true;
+	modeTarget = selected;
+	modeSubmitTimer = setTimeout(function(){
+		if (!modeAcknowledged)
+			showModeStatus("尚未收到保存响应，设备可能已在重启或连接已中断。请勿重复保存；请重新获取地址后检查设备，再决定是否重试。", false);
+	}, 30000);
+	document.form.button.disabled = true;
 	showLoading();
 
 	document.form.action_mode.value = " Apply ";
@@ -151,6 +228,10 @@ table td {text-align: center; }
                             <div class="round_bottom">
                                 <div class="row-fluid">
                                     <div id="tabMenu" class="submenuBlock"></div>
+                                    <div id="modeSwitchStatus" class="alert alert-info" role="status" aria-live="polite" style="display:none; margin:10px;">
+                                        <p id="modeSwitchMessage"></p>
+                                        <a id="modeSwitchLink" style="display:none;"></a>
+                                    </div>
                                         <div style="margin-left: 10px; margin-top: 10px;">
                                             <div class="controls">
                                                 <label class="radio inline"><div id="wl_rt" style="display:none;"><input type="radio" name="sw_mode" class="input" value="1" onclick="setScenerion(1);" <% nvram_match_x("IPConnection", "sw_mode", "1", "checked"); %>><#OP_GW_item#></div></label>

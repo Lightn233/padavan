@@ -589,6 +589,7 @@
 			{"force_mld", "", NULL, EVM_RESTART_SYSCTL},
 #endif
 			{"udpxy_enable_x", "", NULL, EVM_RESTART_IPTV},
+			{"iptv_proxy", "", NULL, EVM_RESTART_IPTV},
 			{"xupnpd_enable_x", "", NULL, EVM_RESTART_IPTV},
 			{"xupnpd_udpxy", "", NULL, EVM_RESTART_IPTV},
 			{"dhcp_enable_x", "", NULL, EVM_RESTART_DHCPD|EVM_REAPPLY_VPNSVR},
@@ -732,6 +733,8 @@
 			{"ntp_server0", "", NULL, EVM_RESTART_NTPC},
 			{"ntp_server1", "", NULL, EVM_RESTART_NTPC},
 			{"ddns_enable_x", "", NULL, EVM_RESTART_DDNS},
+			{"ddns_engine", "", NULL, EVM_RESTART_DDNS},
+			{"ddns_go_port", "", NULL, EVM_RESTART_DDNS},
 			{"asusddns_tos_agreement", "", NULL, FALSE},
 			{"ddns_server_x", "", NULL, EVM_RESTART_DDNS},
 			{"ddns_username_x", "", NULL, EVM_RESTART_DDNS},

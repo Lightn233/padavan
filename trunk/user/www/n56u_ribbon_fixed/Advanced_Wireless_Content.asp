@@ -40,6 +40,12 @@ function initial(){
 
 	var o1 = document.form.wl_gmode;
 	var o2 = document.form.wl_mcs_mode;
+	/* 按值移除选项，避免其他机型先删除旧选项后索引发生变化。 */
+	var bandwidth = document.form.wl_HT_BW;
+	for (var bi = bandwidth.options.length - 1; bi >= 0; --bi) {
+		var bv = Number(bandwidth.options[bi].value);
+		if ((bv === 4 && !wifi5PolicyEnabled()) || (bv >= 3 && !support_5g_160mhz())) bandwidth.remove(bi);
+	}
 
 	if (!support_5g_11ax()){
 		o1.remove(0);
@@ -55,9 +61,7 @@ function initial(){
 		o2.remove(1);
 	}
 
-	if (!support_5g_160mhz()){
-		document.form.wl_HT_BW.remove(3);
-	}
+
 
 	document.form.wl_radio_date_x_Sun.checked = getDateCheck(document.form.wl_radio_date_x.value, 0);
 	document.form.wl_radio_date_x_Mon.checked = getDateCheck(document.form.wl_radio_date_x.value, 1);
@@ -86,19 +90,24 @@ function initial(){
 	if(document.form.wl_wpa_psk.value.length < 1)
 		document.form.wl_wpa_psk.value = "Please type Password";
 
+	wifi5InitPolicy();
 	insertChannelOption();
 	wl_auth_mode_change(1);
 
 	document.form.wl_channel.value = document.form.wl_channel_orig.value;
+	if (wifi5PolicyEnabled() && document.form.wl_channel.selectedIndex < 0) document.form.wl_channel.value = '0';
 
 	load_body();
 
 	automode_hint();
 	enableExtChRows(document.form.wl_gmode);
 	insertExtChannelOption();
+	wifi5UpdateHint();
+	wifi5RememberSelection();
 }
 
 function applyRule(){
+	if (wifi5DfsPromptActive) return false;
 	var auth_mode = document.form.wl_auth_mode.value;
 
 	if(document.form.wl_wpa_psk.value == "Please type Password")
@@ -149,6 +158,10 @@ function applyRule(){
 }
 
 function validForm(){
+	if (!wifi5ValidateSelection()) {
+		alert('当前区域不支持这个信道与带宽组合，请重新选择。');
+		return false;
+	}
 	var auth_mode = document.form.wl_auth_mode.value;
 
     if(document.form.wl_radio_x[0].checked){
@@ -420,7 +433,9 @@ function validate_wlphrase(s, v, obj){
                                                     <option value="1" <% nvram_match_x("","wl_HT_BW", "1","selected"); %>>20/40 MHz</option>
                                                     <option value="2" <% nvram_match_x("","wl_HT_BW", "2","selected"); %>>20/40/80 MHz</option>
                                                     <option value="3" <% nvram_match_x("","wl_HT_BW", "3","selected"); %>>20/40/80/160 MHz</option>
+                                                    <option value="4" <% nvram_match_x("","wl_HT_BW", "4","selected"); %>>160 MHz（固定 AP 带宽）</option>
                                                 </select>
+                                                <div id="wifi5_dfs_hint" style="display:none;margin-top:8px;color:#888;"></div>
                                             </td>
                                         </tr>
                                         <tr>

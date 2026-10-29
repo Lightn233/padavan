@@ -997,6 +997,7 @@ function simplyMAC(fullMAC){
                                                     <option value="1" <% nvram_match_x("", "hw_nat_mode", "1", "selected"); %>>Offload TCP/UDP for LAN/WLAN</option>
                                                     <option value="2" <% nvram_match_x("", "hw_nat_mode", "2", "selected"); %>>Offload TCP/UDP for LAN</option>
                                                 </select>
+                                                <div class="help-block">硬件 NAT 会绕过软件限速。使用自定义 QoS 前请关闭硬件 NAT；内置 SQM 启用期间会暂停两种加速，保留这里的设置。</div>
                                             </td>
                                         </tr>
                                         <tr id="row_sfe" style="display:none;">

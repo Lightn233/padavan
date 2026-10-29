@@ -1,13 +1,13 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=mtr
-PKG_VERSION:=0.95
+PKG_VERSION:=0.96
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/traviscross/mtr/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=12490fb660ba5fb34df8c06a0f62b4f9cbd11a584fc3f6eceda0a99124e8596f
+PKG_SOURCE_URL:=https://www.bitwizard.nl/mtr/files
+PKG_HASH:=ffd19a9f8d5f616c1ea2f0da9fbf9d1239bcecdf5a68912e831966d20929037a
 
-PKG_FIXUP:=autoreconf
+# 正式发布包已含 configure；重跑 autoreconf 会引用未打包的 git-version-gen。
 
 include $(INCLUDE_DIR)/package.mk
 

@@ -68,6 +68,7 @@
 #define DBG_CAT_P2P     19 /* P2P, Miracast */
 #define DBG_CAT_TOKEN	20
 #define DBG_CAT_CMW     21 /* CMW Link Test related */
+#define DBG_CAT_IGMP    22 /* IGMP */
 #define DBG_CAT_RSV1    30 /* reserved index for code development */
 #define DBG_CAT_RSV2    31 /* reserved index for code development */
 #define DBG_CAT_MAX     31
@@ -121,6 +122,7 @@
 #define CATPROTO_FT	0x00000200u
 #define CATPROTO_SCAN	0x00000400u
 #define CATPROTO_FTM    0x00000800u
+#define CATPROTO_OCE    0x00001000u
 
 /* Sub-Category of  DBG_CAT_SEC */
 #define CATSEC_KEY	    0x00000002u
@@ -143,11 +145,12 @@
 #define PRINT_MAC(addr)	\
 	addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]
 
+#ifdef DBG
 extern int			DebugLevel;
 extern UINT32		DebugCategory;
 extern UINT32		DebugSubCategory[DBG_LVL_MAX + 1][32];
 
-#ifdef DBG
+
 #define MTWF_LOG(Category, SubCategory, Level, Fmt)	\
 	do {	\
 		if ((0x1 << Category) & (DebugCategory))	\

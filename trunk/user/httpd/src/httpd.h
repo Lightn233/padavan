@@ -52,7 +52,8 @@ struct mime_handler {
 extern struct mime_handler mime_handlers[];
 
 /* CGI helper functions */
-extern void init_cgi(char *query);
+extern int init_cgi(char *query);
+extern int http_input_error;
 extern char *get_cgi(char *name);
 
 struct language_table{
@@ -142,10 +143,10 @@ extern int ej_set_share_mode(int eid, webs_t wp, int argc, char **argv);
 extern int f_exists(const char *path);
 extern int f_wait_exists(const char *name, int max);
 extern int do_f(const char *path, webs_t wp);
-extern void char_to_ascii(char *output, uint8_t *input);
+int char_to_ascii(char *output, size_t capacity, const char *input);
 
 // cgi.c
-extern void set_cgi(char *name, char *value);
+extern int set_cgi(char *name, char *value);
 
 // crc32.c
 extern unsigned long crc32_sp (unsigned long, const unsigned char *, unsigned int);

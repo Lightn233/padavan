@@ -105,9 +105,10 @@ typedef uint8_t u8;
 #define EVM_RESTART_WIREGUARD		    (1ULL << 62)
 #define EVM_RESTART_SQM		    (1ULL << 63)
 
-#define EVM_RESTART_REBOOT		(1ULL << 64)
+/* u64 位号只能为 0 至 63；使用空闲位，不能用越界移位表示重启。 */
+#define EVM_RESTART_REBOOT		(1ULL << 16)
 
-#define EVM_BLOCK_UNSAFE		(1ULL << 65) /* special case */
+#define EVM_BLOCK_UNSAFE		(1ULL << 46) /* 独立访问限制标志，不是服务事件。 */
 
 
 #define EVT_RESTART_FIREWALL		1

@@ -32,6 +32,18 @@
 #include <linux/wireless.h>
 #include "rtmp_def.h"
 
+/* WEXT 使用有符号32位的 bit/s，超出范围应返回错误，不能变成负速率。 */
+static int rt_wext_bitrate(UINT32 rate, struct iw_param *bitrate)
+{
+	bitrate->value = 0;
+	bitrate->disabled = 0;
+	bitrate->fixed = 0;
+	if (rate > 0x7fffffffU)
+		return -EOVERFLOW;
+	bitrate->value = rate;
+	return 0;
+}
+
 struct iw_priv_args ap_privtab[] = {
 	{
 		RTPRIV_IOCTL_SET,
@@ -123,8 +135,10 @@ struct iw_priv_args ap_privtab[] = {
 #ifdef CONFIG_APSTA_MIXED_SUPPORT
 const struct iw_handler_def rt28xx_ap_iw_handler_def = {
 #define	N(a)	(sizeof(a) / sizeof(a[0]))
+#ifdef CONFIG_WEXT_PRIV
 	.private_args	= (struct iw_priv_args *) ap_privtab,
 	.num_private_args	= N(ap_privtab),
+#endif /* CONFIG_WEXT_PRIV */
 #if IW_HANDLER_VERSION >= 7
 	.get_wireless_stats = rt28xx_get_wireless_stats,
 #endif
@@ -301,12 +315,11 @@ INT rt28xx_ap_ioctl(struct net_device *net_dev, struct ifreq *rq, int cmd)
 		break;
 
 	case SIOCGIWRATE: { /*get default bit rate (bps) */
-		RT_CMD_IOCTL_RATE IoctlRate, *pIoctlRate = &IoctlRate;
+		RT_CMD_IOCTL_RATE IoctlRate = {0}, *pIoctlRate = &IoctlRate;
 
 		pIoctlRate->priv_flags = RT_DEV_PRIV_FLAGS_GET(net_dev);
 		RTMP_DRIVER_BITRATE_GET(pAd, pIoctlRate);
-		wrqin->u.bitrate.value = pIoctlRate->BitRate;
-		wrqin->u.bitrate.disabled = 0;
+		Status = rt_wext_bitrate(pIoctlRate->BitRate, &wrqin->u.bitrate);
 	}
 	break;
 

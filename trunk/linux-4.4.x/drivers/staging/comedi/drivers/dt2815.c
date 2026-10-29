@@ -101,6 +101,7 @@ static int dt2815_ao_insn(struct comedi_device *dev, struct comedi_subdevice *s,
 	int ret;
 
 	for (i = 0; i < insn->n; i++) {
+		/* FIXME: lo bit 0 chooses voltage output or current output */
 		lo = ((data[i] & 0x0f) << 4) | (chan << 1) | 0x01;
 		hi = (data[i] & 0xff0) >> 4;
 
@@ -113,6 +114,8 @@ static int dt2815_ao_insn(struct comedi_device *dev, struct comedi_subdevice *s,
 		ret = comedi_timeout(dev, s, insn, dt2815_ao_status, 0x10);
 		if (ret)
 			return ret;
+
+		outb(hi, dev->iobase + DT2815_DATA);
 
 		devpriv->ao_readback[chan] = data[i];
 	}
@@ -180,6 +183,18 @@ static int dt2815_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 	for (i = 0; i < 8; i++) {
 		devpriv->range_type_list[i] = (it->options[5 + i])
 		    ? current_range_type : voltage_range_type;
+	}
+
+	/*
+	 * Check if hardware is present before attempting any I/O operations.
+	 * Reading 0xff from status register typically indicates no hardware
+	 * on the bus (floating bus reads as all 1s).
+	 */
+	if (inb(dev->iobase + DT2815_STATUS) == 0xff) {
+		dev_err(dev->class_dev,
+			"No hardware detected at I/O base 0x%lx\n",
+			dev->iobase);
+		return -ENODEV;
 	}
 
 	/* Init the 2815 */

@@ -149,6 +149,16 @@ function update_clients(e) {
 	});
 }
 
+// 只缩短显示名称，完整名称继续用于解析和设备链接。
+function short_client_name(name){
+	var domain = '<% nvram_get_x("", "lan_domain"); %>';
+	var suffix = '.' + domain;
+	if (domain && name && name.length > suffix.length &&
+		name.substr(name.length - suffix.length).toLowerCase() == suffix.toLowerCase())
+		return name.substr(0, name.length - suffix.length);
+	return name;
+}
+
 function add_client_row(table, atIndex, client, blocked, j){
 	var row = table.insertRow(atIndex);
 	var typeCell = row.insertCell(0);
@@ -174,7 +184,17 @@ function add_client_row(table, atIndex, client, blocked, j){
 
 	typeCell.style.textAlign = "center";
 	typeCell.innerHTML = "<img title='"+ DEVICE_TYPE[client[5]]+"' src='/bootstrap/img/wl_device/" + client[5] +".gif'>";
-	nameCell.innerHTML = (client[6] == "1") ? "<a href=http://" + client[0] + " target='blank'>" + client[0] + "</a>" : client[0];
+	var displayName = short_client_name(client[0]);
+	nameCell.title = client[0];
+	if (client[6] == "1") {
+		var nameLink = document.createElement('a');
+		nameLink.href = 'http://' + client[0];
+		nameLink.target = '_blank';
+		nameLink.appendChild(document.createTextNode(displayName));
+		nameCell.appendChild(nameLink);
+	} else {
+		nameCell.appendChild(document.createTextNode(displayName));
+	}
 	ipCell.innerHTML = (client[6] == "1") ? "<a href=http://" + client[1] + " target='blank'>" + client[1] + "</a>" : client[1];
 	macCell.innerHTML = "<a target='_blank' href='https://services13.ieee.org/RST/standards-ra-web/rest/assignments/?registry=MAC&text=" + client[2].substr(0,6) + "'>" + mac_add_delimiters(client[2]) + "</a>";
 	if (client[3] == 10){

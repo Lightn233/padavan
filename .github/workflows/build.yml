@@ -1,63 +1,53 @@
-name: build
+name: 手动构建 Padavan
 
-on: 
-  push:
-    branches:
-    - "*"
+on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: 机型模板名称
+        type: string
+        required: true
+        default: RM2100
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        target: [K2P, K2P-NANO, K2P-USB]
-        toolchain: [mipsel-linux-musl]
+    timeout-minutes: 360
+    env:
+      TARGET: ${{ inputs.target }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: hendrikmuhs/ccache-action@v1.2
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          key: ${{ matrix.target }}-${{ matrix.toolchain }}
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '1.20'
-          check-latest: true
+          go-version: '1.27.3'
           cache: false
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 18
-          check-latest: true
-      - name: Prepare
+      - name: 检查机型并安装构建依赖
+        shell: bash
         run: |
-          sudo apt update
-          sudo apt install libtool-bin gperf python3-docutils autopoint gettext ccache
-      - name: Build
+          set -euo pipefail
+          [[ "$TARGET" =~ ^[A-Za-z0-9_-]+$ ]]
+          test -f "trunk/configs/templates/$TARGET.config"
+          sudo apt-get update
+          sudo apt-get install -y build-essential git python3 python3-docutils unzip zip xz-utils \
+            libtool-bin curl cmake gperf gawk flex bison xxd fakeroot kmod cpio bc ccache \
+            gettext automake autopoint texinfo help2man pkg-config zlib1g-dev \
+            libgmp-dev libmpc-dev libmpfr-dev libncurses-dev libltdl-dev wget libc-dev-bin
+      - name: 构建所选机型
+        shell: bash
         run: |
-          make ${{ matrix.target }} TOOLCHAIN=${{ matrix.toolchain }}
-          if [ "${{ matrix.target }}" = "K2P-NANO" ]; then
-            image=$(ls trunk/images/*.trx)
-            mv $image $(echo $image | sed 's/K2P/K2P-NANO/')
-          fi
-      - uses: actions/upload-artifact@v3
+          set -euo pipefail
+          make "$TARGET" 2>&1 | tee build.log
+          sha256sum trunk/images/*.trx > firmware.sha256
+      - name: 保存固件和构建日志
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.toolchain }}
-          path: trunk/images/*.trx
-  publish:
-    needs: [build]
-    runs-on: ubuntu-22.04
-    if: ${{ github.ref == 'refs/heads/main' }}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
-      - name: Set Tag Name
-        run: echo "TAG_ANME=$(date +%Y%m%d)" >> $GITHUB_ENV
-      - uses: rickstaa/action-create-tag@v1
-        with:
-          tag: ${{ env.TAG_ANME }}
-          force_push_tag: true
-      - uses: ncipollo/release-action@v1
-        with:
-          commit: ${{ github.sha }}
-          tag: ${{ env.TAG_ANME }}
-          artifacts: "mipsel-linux-musl/*.trx"
-          allowUpdates: true
+          name: padavan-${{ inputs.target }}-${{ github.run_id }}
+          path: |
+            trunk/images/*.trx
+            firmware.sha256
+            build.log
+          retention-days: 7

@@ -3099,12 +3099,17 @@ static void setup_internal_gsw(void)
 	lan_wan_partition();
 #endif
 	mt7530_phy_setting();
+#if !defined(CONFIG_RAETH_ESW_DEFER_PHY_POWER)
 	for (i = 0; i <= 4; i++) {
 		/*turn on PHY */
 		mii_mgr_read(i, 0x0, &reg_value);
 		reg_value &= ~(0x1 << 11);
 		mii_mgr_write(i, 0x0, reg_value);
 	}
+#else
+	/* RM2100 保持端口关闭，由 rc 在完成 WAN/LAN 隔离后统一上电。 */
+	pr_info("MT7530: PHY activation deferred until switch isolation\n");
+#endif
 
 	mii_mgr_read(31, 0x7808, &reg_value);
 	reg_value |= (3 << 16);	/* Enable INTR */

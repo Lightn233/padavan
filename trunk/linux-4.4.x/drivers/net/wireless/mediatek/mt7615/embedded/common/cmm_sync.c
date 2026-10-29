@@ -25,6 +25,7 @@
 	John Chang	2004-09-01      modified for rt2561/2661
 */
 #include "rt_config.h"
+#include <wifi5_policy.h>
 
 /*BaSizeArray follows the 802.11n definition as MaxRxFactor.  2^(13+factor) bytes. When factor =0, it's about Ba buffer size =8.*/
 UCHAR BaSizeArray[4] = {8, 16, 32, 64};
@@ -181,6 +182,26 @@ static UCHAR BuildChannelListFor5G(RTMP_ADAPTER *pAd, CHANNEL_CTRL *pChCtrl, UCH
 		}
 	}
 
+#ifdef PADAVAN_WIFI5_POLICY
+	/* 国家信息元素也使用筛选后的描述，避免向终端广播其他区域的信道。 */
+	{
+		PCH_DESC policy_desc = (PCH_DESC)pAd->CommonCfg.Wifi5CountryDesc;
+		unsigned int ci, count = 0;
+		BUILD_BUG_ON(sizeof(CH_DESC) != 3);
+		os_zero_mem(policy_desc, sizeof(pAd->CommonCfg.Wifi5CountryDesc));
+		for (ci = 0; ci < WIFI5_CHANNEL_COUNT; ++ci) {
+			unsigned int ch = wifi5_channel_at(ci);
+			if (!wifi5_channel_allowed((const char *)pAd->CommonCfg.CountryCode, ch)) continue;
+			policy_desc[count].FirstChannel = ch;
+			policy_desc[count].NumOfCh = 1;
+			policy_desc[count++].ChannelProp = CHANNEL_DEFAULT_PROP;
+		}
+		pChDesc = policy_desc;
+		num = TotalChNum(pChDesc);
+		pAd->CommonCfg.pChDesc5G = (PUCHAR)pChDesc;
+		bRegionFound = TRUE;
+	}
+#endif
 	if (!bRegionFound) {
 		MTWF_LOG(DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_ERROR, ("CountryRegionABand=%d not support",
 				 pAd->CommonCfg.CountryRegionForABand));
@@ -212,6 +233,19 @@ static UCHAR BuildChannelListFor5G(RTMP_ADAPTER *pAd, CHANNEL_CTRL *pChCtrl, UCH
 			pChannelListFlag[ChIdx] = GetChannelFlag(pChDesc, ChIdx);
 		}
 #ifdef CONFIG_AP_SUPPORT
+
+#ifdef PADAVAN_WIFI5_POLICY
+		for (ChIdx = 0; ChIdx < num; ++ChIdx) {
+			UCHAR ch = GetChannel_5GHZ(pChDesc, ChIdx);
+			const char *cc = (const char *)pAd->CommonCfg.CountryCode;
+			if (!wifi5_channel_allowed(cc, ch)) continue;
+			if (pAd->CommonCfg.Wifi5Fixed160 && !wifi5_bw_allowed(cc, ch, 160)) continue;
+			if (MTChGrpValid(pChCtrl) && !MTChGrpChannelChk(pChCtrl, ch)) continue;
+			pChannelList[q] = ch;
+			pChannelListFlag[q++] = GetChannelFlag(pChDesc, ChIdx);
+		}
+		num = q;
+#else
 
 		for (ChIdx = 0; ChIdx < num; ChIdx++) {
 			if ((pAd->CommonCfg.bIEEE80211H == 0) || ((pAd->CommonCfg.bIEEE80211H == 1) && (pAd->CommonCfg.RDDurRegion != FCC))) {
@@ -285,6 +319,8 @@ static UCHAR BuildChannelListFor5G(RTMP_ADAPTER *pAd, CHANNEL_CTRL *pChCtrl, UCH
 
 			num = pChCtrl->ChGrpABandChNum;
 		}
+
+#endif
 
 #endif /* CONFIG_AP_SUPPORT */
 
@@ -383,6 +419,14 @@ VOID BuildChannelList(RTMP_ADAPTER *pAd, struct wifi_dev *wdev)
 	/* Get channel ctrl address */
 	CHANNEL_CTRL *pChCtrl = hc_get_channel_ctrl(pAd->hdev_ctrl, BandIdx);
 
+#if defined(MT_DFS_SUPPORT) && defined(PADAVAN_WIFI5_POLICY)
+	/* 同一模块重读配置时，国家改变必须重新生成允许的信道表。 */
+	if (WMODE_CAP_5G(PhyMode) &&
+		(pAd->CommonCfg.DfsParameter.DfsChannelCountry[0] != pAd->CommonCfg.CountryCode[0] ||
+		 pAd->CommonCfg.DfsParameter.DfsChannelCountry[1] != pAd->CommonCfg.CountryCode[1]))
+		hc_set_ChCtrlChListStat(pChCtrl, CH_LIST_STATE_NONE);
+#endif
+
 	/* Check state of channel list */
 	if (hc_check_ChCtrlChListStat(pChCtrl, CH_LIST_STATE_DONE)) {
 		MTWF_LOG(DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_TRACE, ("[BuildChannelList][BandIdx=%d] Channel list is already DONE\n", BandIdx));
@@ -405,7 +449,11 @@ VOID BuildChannelList(RTMP_ADAPTER *pAd, struct wifi_dev *wdev)
 #ifdef DOT11_N_SUPPORT
 
     for (ChIdx = 0; ChIdx < pChCtrl->ChListNum; ChIdx++) {
-		if (N_ChannelGroupCheck(pAd, pChCtrl->ChList[ChIdx].Channel, wdev))
+		if (N_ChannelGroupCheck(pAd, pChCtrl->ChList[ChIdx].Channel, wdev)
+#ifdef PADAVAN_WIFI5_POLICY
+			&& (!WMODE_CAP_5G(PhyMode) || wifi5_bw_allowed((const char *)pAd->CommonCfg.CountryCode, pChCtrl->ChList[ChIdx].Channel, 40))
+#endif
+		)
 			hc_set_ChCtrlFlags_CAP(pChCtrl, CHANNEL_40M_CAP, ChIdx);
 
 #ifdef DOT11_VHT_AC

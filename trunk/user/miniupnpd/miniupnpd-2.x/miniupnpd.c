@@ -399,7 +399,8 @@ OpenAndConfHTTPSocket(unsigned short * port)
 		return -1;
 	}
 
-	if(listen(s, 5) < 0)
+	/* 短时并发发现和描述请求需要足够的等待队列；仅调整 HTTP 监听。 */
+	if(listen(s, 64) < 0)
 	{
 		syslog(LOG_ERR, "listen(http): %m");
 		close(s);

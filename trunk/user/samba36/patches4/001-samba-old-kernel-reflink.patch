@@ -1,0 +1,12 @@
+--- a/lib/replace/replace.c
++++ b/lib/replace/replace.c
+@@ -1255,7 +1255,8 @@
+ 			 off_t dst_off,
+ 			 off_t to_copy)
+ {
+-#ifdef HAVE_LINUX_IOCTL
++/* 旧内核头文件没有 reflink 接口时，交给调用方使用普通复制。 */
++#if defined(HAVE_LINUX_IOCTL) && defined(FICLONERANGE)
+ 	struct file_clone_range cr;
+ 
+ 	cr = (struct file_clone_range) {

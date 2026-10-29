@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <limits.h>
 #include <syslog.h>
 #include <ctype.h>
 #include <string.h>
@@ -1090,6 +1091,8 @@ stop_wan(void)
 	wan_proto = get_wan_proto(unit);
 	man_ifname = get_man_ifname(unit);
 
+	stop_ddns();
+	stop_udpxy();
 	notify_pause_detect_internet();
 
 	stop_vpn_client();
@@ -1663,6 +1666,46 @@ notify_on_internet_state_changed(int has_internet, long elapsed)
 		doSystem("%s %d %ld", script_inet, has_internet, elapsed);
 }
 
+#if defined(USE_IPV6)
+/* 链路本地 DNS 必须携带出口；只采用 IPv6 的实际 WAN 接口，不假定机型或 IPv4 出口。 */
+static int
+format_dns6_server(const char *input, const char *wan_ifname, char *output, size_t capacity)
+{
+    struct in6_addr address;
+    char literal[INET6_ADDRSTRLEN], compact[INET6_ADDRSTRLEN], scope[IF_NAMESIZE];
+    const char *zone = strchr(input, '%');
+    size_t length = zone ? (size_t)(zone - input) : strlen(input);
+    int count;
+    if (!length || length >= sizeof(literal)) return -1;
+    memcpy(literal, input, length); literal[length] = 0;
+    if (inet_pton(AF_INET6, literal, &address) != 1 ||
+        !inet_ntop(AF_INET6, &address, compact, sizeof(compact))) return -1;
+    if (zone) zone++;
+    else if (IN6_IS_ADDR_LINKLOCAL(&address)) zone = wan_ifname;
+    if (zone) {
+        unsigned int index = 0;
+        const char *cursor;
+        if (!*zone || strlen(zone) >= IF_NAMESIZE) return -1;
+        if (strspn(zone, "0123456789") == strlen(zone)) {
+            for (cursor = zone; *cursor; cursor++) {
+                unsigned int digit = (unsigned int)(*cursor - '0');
+                if (index > (UINT_MAX - digit) / 10U) return -1;
+                index = index * 10U + digit;
+            }
+            if (!index || !if_indextoname(index, scope)) return -1;
+        } else {
+            if (strspn(zone, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:-") != strlen(zone) ||
+                !if_nametoindex(zone)) return -1;
+            memcpy(scope, zone, strlen(zone) + 1);
+        }
+        count = snprintf(output, capacity, "%s%%%s", compact, scope);
+    } else {
+        count = snprintf(output, capacity, "%s", compact);
+    }
+    return count >= 0 && (size_t)count < capacity ? 0 : -1;
+}
+#endif
+
 int
 update_resolvconf(int is_first_run, int do_not_notify)
 {
@@ -1738,8 +1781,8 @@ update_resolvconf(int is_first_run, int do_not_notify)
 		wan_dns = get_wan_unit_value(0, "dns6");
 		foreach(word, wan_dns, next) {
 			if (strlen(word) > 0) {
-				char dns6s[INET6_ADDRSTRLEN] = {0};
-				if (ipv6_compact(word, dns6s, 0) == 0) {
+				char dns6s[INET6_ADDRSTRLEN + IF_NAMESIZE + 1] = {0};
+				if (format_dns6_server(word, get_wan_unit_value(0, "ifname6"), dns6s, sizeof(dns6s)) == 0) {
 					fprintf(fp, "nameserver %s\n", dns6s);
 					if (is_first_run)
 						resolv_changed = 1;

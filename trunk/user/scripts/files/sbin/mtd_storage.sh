@@ -1,4 +1,5 @@
 #!/bin/sh
+umask 077
 
 result=0
 mtd_part_name="Storage"
@@ -62,50 +63,58 @@ func_load()
 
 func_tarb()
 {
-	rm -f $tmp
-	cd $dir_storage
-	find * -print0 | xargs -0 touch -c -h -t 201001010000.00
-	find * ! -type d -print0 | sort -z | xargs -0 tar -cf $tmp 2>/dev/null
-	cd - >>/dev/null
-	if [ ! -f "$tmp" ] ; then
-		logger -t "Storage" "Cannot create tarball file: $tmp"
-		exit 1
-	fi
+    rm -f "$tmp"
+    find "$dir_storage" -print0 | xargs -0 touch -c -h -t 201001010000.00
+    if ! tar -cf "$tmp" -C "$dir_storage" . 2>/dev/null; then
+        rm -f "$tmp"
+        logger -t Storage 'Cannot create complete storage tarball'
+        exit 1
+    fi
 }
 
 func_save()
 {
-	local fsz
-
-	logger -t "Storage save" "Save storage files to MTD partition \"$mtd_part_dev\""
-	echo "Save storage files to MTD partition \"$mtd_part_dev\""
-	rm -f $tbz
-	md5sum -c -s $hsh 2>/dev/null
-	if [ $? -eq 0 ] ; then
-		echo "Storage hash is not changed, skip write to MTD partition. Exit."
-		rm -f $tmp
-		return 0
-	fi
-	md5sum $tmp > $hsh
-	bzip2 -9 $tmp 2>/dev/null
-	fsz=`stat -c %s $tbz 2>/dev/null`
-	if [ -n "$fsz" ] && [ $fsz -ge 16 ] && [ $fsz -le $mtd_part_size ] ; then
-		mtd_write write $tbz $mtd_part_name
-		if [ $? -eq 0 ] ; then
-			echo "Done."
-			logger -t "Storage save" "Done."
-		else
-			result=1
-			echo "Error! MTD write FAILED"
-			logger -t "Storage save" "Error write to MTD partition: $mtd_part_dev"
-		fi
-	else
-		result=1
-		echo "Error! Invalid storage final data size: $fsz"
-		logger -t "Storage save" "Invalid storage final data size: $fsz"
-	fi
-	rm -f $tmp
-	rm -f $tbz
+    local fsz tar_hash restore_limit archive_size
+    echo "Save storage files to MTD partition \"$mtd_part_dev\""
+    rm -f "$tbz"
+    # 旧固件在启动钩子前将 Storage 恢复到 6 MiB 的 /etc。
+    # 超出开机恢复容量的归档不予保存。
+    restore_limit=$(cat /tmp/adguardhome-state/storage_restore_limit 2>/dev/null)
+    archive_size=$(stat -c %s "$tmp" 2>/dev/null)
+    if [ -n "$restore_limit" ] && [ "$restore_limit" -gt 0 ] && [ "$archive_size" -gt "$restore_limit" ]; then
+        result=1
+        echo 'Error! Storage snapshot exceeds the boot restore RAM budget'
+        rm -f "$tmp"
+        return 1
+    fi
+    if md5sum -c -s "$hsh" 2>/dev/null; then
+        echo 'Storage hash is not changed, skip write to MTD partition. Exit.'
+        rm -f "$tmp"
+        return 0
+    fi
+    tar_hash=$(md5sum "$tmp")
+    if ! bzip2 -9 "$tmp" 2>/dev/null; then
+        result=1
+        echo 'Error! Storage compression FAILED'
+    else
+        fsz=$(stat -c %s "$tbz" 2>/dev/null)
+        if [ -n "$fsz" ] && [ "$fsz" -ge 16 ] && [ "$fsz" -le "$mtd_part_size" ]; then
+            if mtd_write write "$tbz" "$mtd_part_name"; then
+                mkdir -p /tmp/hashes
+                printf '%s\n' "$tar_hash" > "$hsh"
+                echo 'Done.'
+                logger -t 'Storage save' 'Done.'
+            else
+                result=1
+                echo 'Error! MTD write FAILED'
+            fi
+        else
+            result=1
+            echo "Error! Invalid storage final data size: $fsz"
+        fi
+    fi
+    [ "$result" = 0 ] || logger -t 'Storage save' 'Save failed; previous checksum retained for retry'
+    rm -f "$tmp" "$tbz"
 }
 
 func_backup()
@@ -676,6 +685,26 @@ EOF
 		fi
 	fi
 }
+
+operation_lock="/tmp/.storage_operation"
+attempt=0
+while ! mkdir "$operation_lock" 2>/dev/null; do
+    owner=$(cat "$operation_lock/pid" 2>/dev/null)
+    case "$owner" in
+        ''|*[!0-9]*) ;;
+        *) if ! kill -0 "$owner" 2>/dev/null; then
+               rm -f "$operation_lock/pid"
+               rmdir "$operation_lock" 2>/dev/null
+               continue
+           fi ;;
+    esac
+    attempt=$((attempt+1))
+    [ "$attempt" -lt 30 ] || exit 1
+    sleep 1
+done
+echo $$ > "$operation_lock/pid"
+trap 'rm -f "$operation_lock/pid"; rmdir "$operation_lock" 2>/dev/null' 0
+trap 'exit 1' 1 2 15
 
 case "$1" in
 load)

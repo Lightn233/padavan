@@ -380,6 +380,8 @@ void __aa_fs_profile_migrate_dents(struct aa_profile *old,
 
 	for (i = 0; i < AAFS_PROF_SIZEOF; i++) {
 		new->dents[i] = old->dents[i];
+		if (new->dents[i])
+			new->dents[i]->d_inode->i_mtime = CURRENT_TIME;
 		old->dents[i] = NULL;
 	}
 }
@@ -409,6 +411,10 @@ int __aa_fs_profile_mkdir(struct aa_profile *profile, struct dentry *parent)
 		struct aa_profile *p;
 		p = aa_deref_parent(profile);
 		dent = prof_dir(p);
+		if (!dent) {
+			error = -ENOENT;
+			goto fail2;
+		}
 		/* adding to parent that previously didn't have children */
 		dent = securityfs_create_dir("profiles", dent);
 		if (IS_ERR(dent))

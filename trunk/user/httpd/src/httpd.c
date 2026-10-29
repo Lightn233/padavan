@@ -25,7 +25,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <ctype.h>
-#include <sys/signal.h>
+#include <signal.h>
 #include <sys/sysinfo.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -465,7 +465,7 @@ http_login(const uaddr *ip_now)
 
 	login_timestamp = uptime();
 
-	sprintf(s_lts, "%lu", login_timestamp);
+	snprintf(s_lts, sizeof(s_lts), "%lld", (long long)login_timestamp);
 	nvram_set_temp("login_timestamp", s_lts);
 }
 
@@ -620,7 +620,7 @@ send_headers( int status, const char *title, const char *extra_header, const cha
 			fprintf( conn_fp, "Last-Modified: %s\r\n", timebuf );
 		}
 		if (st->st_size > 0)
-			fprintf( conn_fp, "Content-Length: %lu\r\n", st->st_size );
+			fprintf( conn_fp, "Content-Length: %llu\r\n", (unsigned long long)st->st_size );
 	}
 	if (mime_type)
 		fprintf( conn_fp, "Content-Type: %s\r\n", mime_type );
@@ -829,13 +829,34 @@ set_preferred_lang(char *cur)
 	return 0;
 }
 
+int http_input_error;
+
+/* Content-Length 只接受十进制，在累加前检查上限，避免先溢出再判断。 */
+static int
+parse_content_length(const char *text, int *result)
+{
+    unsigned int value = 0;
+    if (*text < '0' || *text > '9') return -1;
+    do {
+        unsigned int digit = (unsigned int)(*text++ - '0');
+        if (value > (50000000U - digit) / 10U) return -1;
+        value = value * 10U + digit;
+    } while (*text >= '0' && *text <= '9');
+    while (*text == ' ' || *text == '\t') text++;
+    if (*text == '\r') text++;
+    if (*text == '\n') text++;
+    if (*text) return -1;
+    *result = (int)value;
+    return 0;
+}
+
 static void
 handle_request(FILE *conn_fp, const conn_item_t *item)
 {
 	char line[4096];
 	char *method, *path, *protocol, *authorization, *boundary;
 	char *cur, *end, *cp, *file, *query;
-	int len, login_state, method_id, do_logout, clen = 0;
+	int len, login_state, method_id, do_logout, clen = 0, clen_seen = 0, headers_done = 0;
 	time_t if_modified_since = (time_t)-1;
 	struct mime_handler *handler;
 	struct stat st, *p_st = NULL;
@@ -843,6 +864,7 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 
 	/* Initialize the request variables. */
 	authorization = boundary = NULL;
+	http_input_error = 0;
 
 	/* Parse the first line of the request. */
 	if (!fgets(line, sizeof(line), conn_fp)) {
@@ -871,9 +893,19 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 
 	while ( (cur < end) && (fgets(cur, line + sizeof(line) - cur, conn_fp)) ) {
 		if ( strcmp( cur, "\n" ) == 0 || strcmp( cur, "\r\n" ) == 0 ) {
+			headers_done = 1;
 			break;
 		}
 		
+        if (!strchr(cur, '\n')) {
+            send_error(400, "Bad Request", NULL, "Incomplete header.", conn_fp);
+            return;
+        }
+        /* 本服务仅接受已知长度的正文，不能把分块正文误当作空表单。 */
+        if (strncasecmp(cur, "Transfer-Encoding:", 18) == 0) {
+            send_error(501, "Not Implemented", NULL, "Transfer encoding unsupported.", conn_fp);
+            return;
+        }
 		if (strncasecmp(cur, "Accept-Language:", 16) == 0) {
 			if (!http_has_lang)
 				http_has_lang = set_preferred_lang(cur + 16);
@@ -887,8 +919,7 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 		else if (strncasecmp( cur, "Content-Length:", 15) == 0) {
 			cp = cur + 15;
 			cp += strspn( cp, " \t" );
-			clen = strtoul( cp, NULL, 0 );
-			if ((clen < 0) || (clen > 50000000)) {
+			if (clen_seen++ || parse_content_length(cp, &clen) != 0) {
 				send_error( 400, "Bad Request", NULL, "Content length invalid.", conn_fp);
 				return;
 			}
@@ -898,13 +929,33 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 			cp += strspn( cp, " \t" );
 			if_modified_since = tdate_parse(cp);
 		}
-		else if ((cp = strstr( cur, "boundary=" ))) {
-			boundary = cp + 9;
-			for ( cp = cp + 9; *cp && *cp != '\r' && *cp != '\n'; cp++ );
-			*cp = '\0';
-			cur = ++cp;
-		}
+        else if (strncasecmp(cur, "Content-Type:", 13) == 0 &&
+                 (cp = strstr(cur + 13, "boundary="))) {
+            char *saved_end = cur + strlen(cur) + 1;
+            boundary = cp + 9;
+            if (*boundary == '"') {
+                boundary++;
+                cp = strchr(boundary, '"');
+                if (!cp) {
+                    send_error(400, "Bad Request", NULL, "Invalid boundary.", conn_fp);
+                    return;
+                }
+            } else {
+                cp = boundary + strcspn(boundary, "; \t\r\n");
+            }
+            *cp = 0;
+            cur = saved_end;
+        }
 	}
+
+    if (!headers_done) {
+        send_error(400, "Bad Request", NULL, "Incomplete headers.", conn_fp);
+        return;
+    }
+    if (strcasecmp(method, "post") == 0 && !clen_seen) {
+        send_error(411, "Length Required", NULL, "Content length required.", conn_fp);
+        return;
+    }
 
 	if (strcasecmp(method, "get") == 0)
 		method_id = HTTP_METHOD_GET;
@@ -1005,6 +1056,16 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 		else if (handler->output == do_ej)
 			do_cgi_clear();
 	}
+
+    /* 输入失败必须阻止设置、恢复或刷写的输出处理函数继续执行。 */
+    if (http_input_error) {
+        int status = http_input_error;
+        do_cgi_clear();
+        send_error(status, status == 413 ? "Payload Too Large" :
+                   status == 500 ? "Internal Server Error" : "Bad Request",
+                   NULL, "Request input rejected.", conn_fp);
+        return;
+    }
 
 	if (handler->output == do_file) {
 		if (stat(file, &st) == 0 && !S_ISDIR(st.st_mode)) {

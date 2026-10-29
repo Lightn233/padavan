@@ -677,6 +677,8 @@ start_over:
 			return swp_entry(si->type, offset);
 		pr_debug("scan_swap_map of si %d failed to find offset\n",
 		       si->type);
+		cond_resched();
+
 		spin_lock(&swap_avail_lock);
 nextsi:
 		/*
@@ -1653,7 +1655,7 @@ sector_t map_swap_page(struct page *page, struct block_device **bdev)
 {
 	swp_entry_t entry;
 	entry.val = page_private(page);
-	return map_swap_entry(entry, bdev);
+	return map_swap_entry(entry, bdev) << (PAGE_SHIFT - 9);
 }
 
 /*

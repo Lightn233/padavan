@@ -37,6 +37,7 @@ function initial(){
 	show_banner(1);
 	show_menu(5,1,1);
 	show_footer();
+	wifi24InitPolicy();
 
 	if (!support_2g_11ax()){
 		var o1 = document.form.rt_gmode;
@@ -85,6 +86,23 @@ function initial(){
 	automode_hint();
 	enableExtChRows(document.form.rt_gmode);
 	insertExtChannelOption();
+}
+
+/* 仅在本机已接入配置生成和校验时开放新模式。 */
+function wifi24InitPolicy(){
+	var enabled = typeof wifi5_policy === 'function' && wifi5_policy() !== null;
+	var bw = document.form.rt_HT_BW;
+	if (!enabled) {
+		for (var i = bw.options.length - 1; i >= 0; --i)
+			if (Number(bw.options[i].value) >= 2) bw.remove(i);
+	}
+	document.getElementById('wifi24_coex_hint').style.display = enabled ? '' : 'none';
+}
+
+function wifi24Fixed40Valid(){
+	var f=document.form,cc=f.rt_country_code.value,ch=Number(f.rt_channel.value),above=Number(f.rt_HT_EXTCHA.value);
+	var max=(cc==='US'||cc==='TW')?11:(['CN','JP','AU','GB','RU'].indexOf(cc)>=0?13:0);
+	return max>0&&ch>=1&&ch<=max&&(above===0||above===1)&&(above?ch+4<=max:ch>=5);
 }
 
 function applyRule(){
@@ -138,6 +156,15 @@ function applyRule(){
 }
 
 function validForm(){
+	if (Number(document.form.rt_HT_BW.value) >= 2 &&
+		!['2','3','5'].includes(document.form.rt_gmode.value)) {
+		alert('此带宽模式需要启用 802.11n，请选择 g/n、b/g/n 或 n 模式。');
+		return false;
+	}
+	if (document.form.rt_HT_BW.value === '3' && !wifi24Fixed40Valid()) {
+		alert('固定 40 MHz 需要手动选择有效的主信道和扩展信道，不能使用自动或信道 14。');
+		return false;
+	}
 	var auth_mode = document.form.rt_auth_mode.value;
 
     if(document.form.rt_radio_x[0].checked){
@@ -419,7 +446,10 @@ function validate_wlphrase(s, v, obj){
                                                 <select name="rt_HT_BW" class="input" onChange="return change_common_rt(this, 'WLANConfig11b', 'rt_HT_BW')">
                                                     <option value="0" <% nvram_match_x("","rt_HT_BW", "0","selected"); %>>20 MHz</option>
                                                     <option value="1" <% nvram_match_x("","rt_HT_BW", "1","selected"); %>>20/40 MHz</option>
+                                                    <option value="2" <% nvram_match_x("","rt_HT_BW", "2","selected"); %>>20/40 MHz（自动共存）</option>
+                                                    <option value="3" <% nvram_match_x("","rt_HT_BW", "3","selected"); %>>40 MHz（固定 AP 带宽）</option>
                                                 </select>
+                                                <div id="wifi24_coex_hint" style="display:none;margin-top:6px;color:#888;">自动共存可在 20/40 MHz 间调整；固定 40 MHz 需手动选择主/扩展信道，终端仍可用 20 MHz 连接。需要应用设置后生效。</div>
                                             </td>
                                         </tr>
                                         <tr>

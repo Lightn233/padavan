@@ -47,7 +47,6 @@
 #include "httpd.h"
 
 /******************************************************************************************************************************************/
-
 /* Dump leases in <tr><td>hostname</td><td>MAC</td><td>IP</td><td>expires</td></tr> format */
 int
 ej_lan_leases(int eid, webs_t wp, int argc, char **argv)
@@ -63,7 +62,7 @@ ej_lan_leases(int eid, webs_t wp, int argc, char **argv)
 	struct in6_addr addr6;
 #endif
 
-	ret += websWrite(wp, "IPv4 Address       MAC Address          Host Name\n");
+	ret += websWrite(wp, "IPv4 Address       MAC Address          Host Name          IPv6 Address\n");
 	//                    192.168.100.100    00:90:F5:XX:XX:XX    Padavan
 	//                    ffff:ffff:ffff:0001:0000:0000:0000:0001 Padavan
 
@@ -93,8 +92,37 @@ ej_lan_leases(int eid, webs_t wp, int argc, char **argv)
 			dh_mac[i] = toupper(dh_mac[i]);
 		
 		ret += websWrite(wp, "%-19s", (dh_ip[0]!=0) ? dh_ip : " ");
-		ret += websWrite(wp, "%-21s", (dh_mac[0]!=0) ? dh_mac : " " );
-		ret += websWrite(wp, "%s\n",  dh_host);
+        ret += websWrite(wp, "%-21s", (dh_mac[0]!=0) ? dh_mac : " " );
+        ret += websWrite(wp, "%s", dh_host);
+        #if defined (USE_IPV6)
+{
+    FILE *fp6;
+    char buff6[256];
+    char ip6[64];
+    char mac6[32];
+    int found = 0;
+    fp6 = popen("ip -6 neigh show dev br0", "r");
+    if (fp6) {
+        while (fgets(buff6, sizeof(buff6), fp6)) {
+            if (strstr(buff6, "FAILED"))
+                continue;
+            memset(ip6, 0, sizeof(ip6));
+            memset(mac6, 0, sizeof(mac6));
+            if (sscanf(buff6, "%63s dev %*s lladdr %31s", ip6, mac6) == 2) {
+                if (strcasecmp(dh_mac, mac6) == 0 && ip6[0] == '2') {
+                    ret += websWrite(wp, " %s", ip6);
+                    found = 1;
+                    break;
+                }
+            }
+        }
+        pclose(fp6);
+    }
+    // 如果没有找到公网IPv6，则不输出任何内容（留空）
+}
+#endif
+  
+        ret += websWrite(wp, "\n");
 	}
 	fclose(fp);
 
@@ -1742,7 +1770,7 @@ ej_wl_scan_5g(int eid, webs_t wp, int argc, char **argv)
 			site_signal[9] = '\0';
 			
 			memset(ssid_str, 0, sizeof(ssid_str));
-			char_to_ascii(ssid_str, trim_r(site_ssid));
+			char_to_ascii(ssid_str, sizeof(ssid_str), trim_r(site_ssid));
 			
 			if (!strlen(ssid_str))
 				strcpy(ssid_str, "???");
@@ -1858,7 +1886,7 @@ ej_wl_scan_2g(int eid, webs_t wp, int argc, char **argv)
 			site_signal[9] = '\0';
 			
 			memset(ssid_str, 0, sizeof(ssid_str));
-			char_to_ascii(ssid_str, trim_r(site_ssid));
+			char_to_ascii(ssid_str, sizeof(ssid_str), trim_r(site_ssid));
 			
 			if (!strlen(ssid_str))
 				strcpy(ssid_str, "???");

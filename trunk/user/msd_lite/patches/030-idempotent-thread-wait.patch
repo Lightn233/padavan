@@ -1,0 +1,19 @@
+--- a/src/liblcb/src/threadpool/threadpool.c
++++ b/src/liblcb/src/threadpool/threadpool.c
+@@ -1155,11 +1155,11 @@
+ 		return (EDEADLK);
+ 
+ 	for (size_t i = 0; i < tp->threads_max; i ++) {
+-		if (TP_THREAD_STATE_STOP == tp->threads[i].state) { /* Thread already in stop state, cleanup. */
+-			pthread_detach(tp->threads[i].pt_id);
+-			memset(&tp->threads[i].pt_id, 0x00, sizeof(pthread_t));	
+-			continue;
+-		}
++		/* 已回收的句柄为零；重复等待不能传给 pthread_detach/join。 */
++		pthread_t empty_id;
++		memset(&empty_id, 0, sizeof(empty_id));
++		if (!memcmp(&tp->threads[i].pt_id, &empty_id, sizeof(empty_id))) continue;
++		/* 即使状态已停止，也等待线程真正退出后再释放线程池。 */
+ 		/* Wait for thread exit. */
+ 		error = pthread_join(tp->threads[i].pt_id, NULL);
+ 		memset(&tp->threads[i].pt_id, 0x00, sizeof(pthread_t));	

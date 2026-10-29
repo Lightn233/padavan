@@ -1,10 +1,12 @@
 local cjson = require "cjson"
-local server_section = arg[1]
+local server_section = arg[1] or ""
+if not server_section:match("^%d+$") or #server_section > 10 then io.stderr:write("节点编号无效\n"); os.exit(1) end
 local proto = arg[2]
 local local_port = arg[3] or "0"
 local socks_port = arg[4] or "0"
 local ssrindext = io.popen("dbus get ssconf_basic_json_" .. server_section)
 local servertmp = ssrindext:read("*all")
+ssrindext:close()
 local server = cjson.decode(servertmp)
 local v2ray = {
 log = {
@@ -57,7 +59,7 @@ log = {
 		streamSettings = {
 			network = server.transport or "tcp",
 			security = (server.tls == '1') and "tls" or "none",
-			tlsSettings = {allowInsecure = (server.insecure ~= "0") and true or false,serverName=server.tls_host,},
+			tlsSettings = {useSystemCA = true,allowInsecure = (server.insecure == "1" or server.insecure == 1 or server.insecure == true),serverName=server.tls_host,},
 		tcpSettings = (server.transport == "tcp") and {
 			header = {
 				type = server.tcp_guise,
@@ -118,4 +120,13 @@ log = {
 	}
 }
 
+-- 新旧核心均接受数组形式，避免新版忽略旧单数字段。
+local incoming = {}
+if v2ray.inbound then incoming[#incoming+1] = v2ray.inbound end
+for _, value in ipairs(v2ray.inboundDetour or {}) do incoming[#incoming+1] = value end
+if #incoming == 0 then io.stderr:write("没有监听端口\n"); os.exit(1) end
+local outgoing = {v2ray.outbound}
+for _, value in ipairs(v2ray.outboundDetour or {}) do outgoing[#outgoing+1] = value end
+v2ray.inbounds, v2ray.outbounds = incoming, outgoing
+v2ray.inbound, v2ray.inboundDetour, v2ray.outbound, v2ray.outboundDetour = nil, nil, nil, nil
 print(cjson.encode(v2ray))

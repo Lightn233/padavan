@@ -32,6 +32,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <semaphore.h>
 #include "pppd.h"
 #include "session.h"
 #include "chap-new.h"

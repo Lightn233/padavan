@@ -1,0 +1,11 @@
+--- a/lib/fileutils.c
++++ b/lib/fileutils.c
+@@ -462,7 +462,7 @@
+ 	return p;
+ }
+ 
+-#if defined(SYS_openat2)
++#if defined(SYS_openat2) && defined(HAVE_LINUX_OPENAT2_H)
+ int ul_openat_resolve(int dirfd, const char *path, int flags,
+ 		      mode_t mode, unsigned long long resolve)
+ {

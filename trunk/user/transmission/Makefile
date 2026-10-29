@@ -1,64 +1,31 @@
-SRC_NAME = transmission-3.00
-SRC_URL = https://github.com/transmission/transmission/releases/download/3.00/transmission-3.00.tar.xz
-CFLAGS   += -fvisibility=hidden -D_LARGEFILE64_SOURCE -D_LFS64_LARGEFILE -Wno-implicit-fallthrough
+include $(ROOTDIR)/rules.mk
 
-THISDIR = $(shell pwd)
+PKG_NAME:=transmission
+PKG_VERSION:=4.1.4
+PKG_SOURCE:=transmission-$(PKG_VERSION).tar.xz
+PKG_SOURCE_URL:=https://github.com/transmission/transmission/releases/download/$(PKG_VERSION)
+PKG_HASH:=86e7aa020cdf64826447034bc85f4d3b7c848d8c0891d9dc9b9fddfb2c805d22
+CMAKE_BINARY_SUBDIR:=build
 
-all: download_test extract_test config_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)/build && \
-	$(MAKE) -C $(SRC_NAME)/build install DESTDIR=$(THISDIR)/install
+include $(INCLUDE_DIR)/package.mk
+include $(INCLUDE_DIR)/cmake.mk
 
-download_test:
-	( if [ ! -f $(SRC_NAME).tar.xz ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.xz $(SRC_URL); \
-	fi )
+# 复用固件的 TLS 和 curl；无桌面界面，仅构建守护进程和远程控制客户端。
+CMAKE_OPTIONS += -DENABLE_DAEMON=ON -DENABLE_CLI=OFF -DENABLE_UTILS=OFF \
+	-DENABLE_GTK=OFF -DENABLE_QT=OFF -DENABLE_MAC=OFF -DENABLE_NLS=OFF \
+	-DENABLE_TESTS=OFF -DINSTALL_DOC=OFF -DINSTALL_WEB=ON -DREBUILD_WEB=OFF \
+	-DWITH_SYSTEMD=OFF -DWITH_INOTIFY=ON -DWITH_CRYPTO=openssl \
+	-DRUN_CLANG_TIDY=OFF -DUSE_SYSTEM_EVENT2=OFF -DUSE_SYSTEM_DEFLATE=OFF \
+	-DUSE_SYSTEM_DHT=OFF -DUSE_SYSTEM_MINIUPNPC=OFF -DUSE_SYSTEM_NATPMP=OFF \
+	-DUSE_SYSTEM_UTP=OFF -DUSE_SYSTEM_B64=OFF -DUSE_SYSTEM_PSL=OFF \
+	-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -static-libstdc++ -static-libgcc -Wl,--gc-sections -Wl,-rpath-link,$(STAGING_DIR)/lib"
+EXTRA_CFLAGS += -ffunction-sections -fdata-sections -fvisibility=hidden
 
-extract_test:
-	( if [ ! -d $(SRC_NAME) ]; then \
-		tar -xf $(SRC_NAME).tar.xz; \
-		patch -p1 -d $(SRC_NAME) < $(SRC_NAME).patch; \
-		mkdir -p $(SRC_NAME)/third-party/miniupnpc/include/miniupnp ; \
-		cp -r $(SRC_NAME)/third-party/miniupnpc/*.h $(SRC_NAME)/third-party/miniupnpc/include/miniupnp ; \
-	fi )
+$(eval $(call BuildPackage,transmission))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
 
-config_test:
-	( if [ -f ./config_done ]; then \
-		echo "the same configuration"; \
-	else \
-		make configure && touch config_done; \
-	fi )
-
-configure:
-	( mkdir -p $(SRC_NAME)/build && cd $(SRC_NAME)/build ; \
-	cmake -DCMAKE_TOOLCHAIN_FILE=$(CONFIG_CMAKE_TOOLCHAIN_FILE) \
-		  -DCMAKE_INSTALL_PREFIX=/usr \
-		  -DCMAKE_BUILD_TYPE=Release \
-		  -DENABLE_CLI=OFF \
-		  -DENABLE_DAEMON=ON \
-		  -DENABLE_GTK=OFF \
-		  -DENABLE_LIGHTWEIGHT=ON \
-		  -DENABLE_NLS=OFF \
-		  -DENABLE_QT=OFF \
-		  -DENABLE_TESTS=OFF \
-		  -DINSTALL_DOC=OFF \
-		  -DUSE_SYSTEM_MINIUPNPC=OFF \
-		  -DUSE_SYSTEM_NATPMP=OFF \
-		  -DUSE_SYSTEM_UTP=OFF \
-		  -DWITH_SYSTEMD=OFF \
-		  -DWITH_INOTIFY=ON \
-		  -DWITH_CRYPTO=openssl \
-		  .. \
-	)
-
-clean:
-	if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) clean ; \
-	fi ; \
-	rm -f config_done
-	rm -rf install
-
-romfs:
-	cp -rf $(THISDIR)/install/usr/share/transmission $(INSTALLDIR)/usr/share
-	rm -f $(INSTALLDIR)/usr/share/transmission/web/LICENSE
-	$(ROMFSINST) $(THISDIR)/install/usr/bin/transmission-daemon /usr/bin/transmission-daemon
-	$(ROMFSINST) -p +x /usr/bin/transmission.sh
+romfs: $(STAMP_BUILT)
+	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin $(ROMFSDIR)/usr/share/transmission/web
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/daemon/transmission-daemon $(ROMFSDIR)/usr/bin/transmission-daemon
+	$(INSTALL_BIN) ./transmission.sh $(ROMFSDIR)/usr/bin/transmission.sh
+	$(CP) $(PKG_BUILD_DIR)/web/public_html/. $(ROMFSDIR)/usr/share/transmission/web/

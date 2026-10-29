@@ -506,6 +506,10 @@ BOOLEAN PMF_ExtractIGTKKDE(
 	PPMF_IGTK_KDE igtk_kde_ptr;
 	UINT8 offset = 0;
 
+	/* 校验完整长度后才能读取 KeyID 和六字节序列号。 */
+	if (buf_len != 2 + LEN_WPA_TSC + LEN_BIP128_IGTK &&
+		buf_len != 2 + LEN_WPA_TSC + LEN_BIP256_IGTK)
+		return FALSE;
 	igtk_kde_ptr = (PPMF_IGTK_KDE) pBuf;
 	*IGTK_KeyIdx = igtk_kde_ptr->KeyID[0];
 	offset += 2;

@@ -116,11 +116,17 @@
  *	This is an Ethernet frame header.
  */
 
+/* libc 已提供以太网头时沿用该定义，避免重复声明。 */
+#ifndef __UAPI_DEF_ETHHDR
+#define __UAPI_DEF_ETHHDR 1
+#endif
+#if __UAPI_DEF_ETHHDR
 struct ethhdr {
 	unsigned char	h_dest[ETH_ALEN];	/* destination eth addr	*/
 	unsigned char	h_source[ETH_ALEN];	/* source ether addr	*/
 	__be16		h_proto;		/* packet type ID field	*/
 } __attribute__((packed));
+#endif
 
 
 #endif	/* _LINUX_IF_ETHER_H */

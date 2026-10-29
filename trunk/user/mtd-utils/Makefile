@@ -17,8 +17,10 @@ config_test:
 		make configure && touch config_done; \
 	fi )
 
+# Git 检出后的时间顺序可能触发旧版生成规则，配置前用本机工具重新生成。
 configure:
-	( cd $(SRC_NAME) ; \
+	( cd $(SRC_NAME) && \
+	autoreconf -fi && \
 	./configure \
 		--prefix= \
 		--enable-static \
@@ -34,7 +36,7 @@ configure:
 
 clean:
 	if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) distclean ; \
+		$(MAKE) -C $(SRC_NAME) distclean || exit $$? ; \
 	fi ; \
 	rm -f config_done
 

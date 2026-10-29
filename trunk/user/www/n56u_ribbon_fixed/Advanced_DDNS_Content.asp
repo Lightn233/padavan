@@ -20,6 +20,7 @@
 <script type="text/javascript" src="/itoggle.js"></script>
 <script type="text/javascript" src="/popup.js"></script>
 <script type="text/javascript" src="/help.js"></script>
+<script type="text/javascript" src="/ddns-go-ui.js"></script>
 <script>
 var $j = jQuery.noConflict();
 
@@ -31,6 +32,7 @@ $j(document).ready(function() {
 <script>
 
 <% wanlink(); %>
+<% optional_service_support(); %>
 
 var ddns_prov1 = '<% nvram_get_x("","ddns_server_x"); %>';
 var ddns_prov2 = '<% nvram_get_x("","ddns2_server"); %>';
@@ -86,6 +88,8 @@ function init()
 	show_menu(5,4,id_menu);
 
 	ddns_init();
+	changeDdnsEngine();
+	if (support_ddns_go()) setInterval(ddnsGoRefresh, 5000);
 
 	hideLoading();
 }
@@ -222,6 +226,7 @@ function ddns_disable()
 
 function change_ddns_enabled()
 {
+	if (ddnsGoMode()) { ddns_disable(); return; }
 	if (document.form.ddns_enable_x[0].checked)
 		ddns_enable(1);
 	else
@@ -325,6 +330,7 @@ function openLink(s) {
 }
 
 function validForm(){
+	if (ddnsGoMode()) return validate_range(document.form.ddns_go_port, 1024, 65535);
 	if(document.form.ddns_enable_x[0].checked){
 		var o1 = document.form.ddns_server_x;
 		var o2 = document.form.ddns2_server;
@@ -385,6 +391,7 @@ function applyRule(){
 		document.form.current_page.value = "/Advanced_DDNS_Content.asp";
 		document.form.next_page.value = "";
 		
+		ddnsGoPreserveLegacy();
 		document.form.submit();
 	}
 }
@@ -474,7 +481,19 @@ function checkDDNSReturnCode(){
                                                 </div>
                                             </td>
                                         </tr>
-                                        <tr id="row_ddns_server">
+                                        <tr id="row_ddns_engine"><th>DDNS 程序</th><td>
+<select name="ddns_engine" onchange="changeDdnsEngine()">
+<option value="inadyn" <% nvram_match_x("", "ddns_engine", "inadyn", "selected"); %>>内置 DDNS（保留原设置）</option>
+<option value="ddns-go" <% nvram_match_x("", "ddns_engine", "ddns-go", "selected"); %>>DDNS-Go（可选）</option>
+</select></td></tr>
+<tr id="row_ddns_go" style="display:none"><th>DDNS-Go 管理</th><td>
+<p>管理端口：<input name="ddns_go_port" maxlength="5" size="5" value="<% nvram_get_x("", "ddns_go_port"); %>" /></p>
+<p>程序与配置保存在 RWFS。先安装程序，再应用开关；域名和服务商令牌在独立管理页面配置。</p>
+<button type="button" onclick="ddnsGoAction('install')">安装／更新已验证版</button>
+<button type="button" onclick="ddnsGoAction('rollback')">回退上一版</button>
+<a id="ddns_go_link" target="_blank" rel="noopener">打开管理页面</a>
+<p id="ddns_go_status"></p></td></tr>
+<tr id="row_ddns_server">
                                             <th><#LANHostConfig_x_DDNSServer_itemname#></th>
                                             <td>
                                                 <select name="ddns_server_x" class="input" onchange="change_ddns_server(1)">

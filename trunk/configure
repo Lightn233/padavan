@@ -8,7 +8,6 @@ kernel_cf=""
 kernel_tf=""
 busybox_id="1.24.x"
 busybox_cf="$ROOTDIR/configs/boards/busybox.config"
-busybox_tf="$ROOTDIR/user/busybox/busybox-${busybox_id}/.config"
 board_h=""
 board_mk=""
 paragon_hfsplus=0
@@ -44,6 +43,12 @@ func_enable_busybox_param()
 
 func_disable_busybox_param()
 {
+	# 新版把交换分区命令拆成两个选项，保持原机型开关的含义。
+	if [ "$busybox_id" = "1.38.0" ] && [ "$1" = CONFIG_SWAPONOFF ]; then
+		func_disable_busybox_param CONFIG_SWAPON
+		func_disable_busybox_param CONFIG_SWAPOFF
+		return
+	fi
 	if [ -n "`grep \^$1=y $busybox_tf`" ] ; then
 		sed -i "s/$1=y/\# $1 is not set/" $busybox_tf
 	fi
@@ -51,6 +56,13 @@ func_disable_busybox_param()
 
 # load project root config
 . $ROOTDIR/.config
+
+# U3 先验证 RM2100，其余机型继续沿用原来的 BusyBox 配置和源码。
+if [ "$CONFIG_FIRMWARE_PRODUCT_ID" = "RM2100" ]; then
+    busybox_id="1.38.0"
+    busybox_cf="$ROOTDIR/configs/boards/busybox-1.38.config"
+fi
+busybox_tf="$ROOTDIR/user/busybox/busybox-${busybox_id}/.config"
 
 if [ ! -f "$ROOTDIR/vendors/Ralink/config.arch" ] ; then
 	echo "Project product dir not found! Terminate."

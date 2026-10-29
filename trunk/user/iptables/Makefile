@@ -1,17 +1,22 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=iptables
-PKG_VERSION:=1.8.7
+PKG_VERSION:=1.8.13
 
 PKG_FIXUP:=autoreconf
 PKG_INSTALL:=1
 
+PKG_SOURCE:=iptables-1.8.13.tar.xz
+PKG_SOURCE_URL:=https://www.netfilter.org/projects/iptables/files
+PKG_HASH:=1afcd33da9e8f913ace6a2126788162e207e26f5d5e29c6573c0e581ffc58b99
+
 include $(INCLUDE_DIR)/package.mk
 
-SRC_DIR=./iptables-1.8.7
+SRC_DIR:=./src
 
 CONFIGURE_ARGS += \
 	--enable-static \
+	--with-pic \
 	--disable-shared \
 	--disable-nftables \
 	--disable-connlabel \

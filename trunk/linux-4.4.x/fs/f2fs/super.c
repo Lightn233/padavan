@@ -2969,11 +2969,16 @@ try_onemore:
 	} else {
 		err = recover_fsync_data(sbi, true);
 
-		if (!f2fs_readonly(sb) && err > 0) {
-			err = -EINVAL;
-			f2fs_msg(sb, KERN_ERR,
-				"Need to recover fsync data");
-			goto free_meta;
+		if (err > 0) {
+			if (!f2fs_readonly(sb)) {
+				f2fs_msg(sb, KERN_ERR,
+					"Need to recover fsync data");
+				err = -EINVAL;
+				goto free_meta;
+			} else {
+				f2fs_msg(sb, KERN_INFO, "drop all fsynced data");
+				err = 0;
+			}
 		}
 	}
 skip_recovery:

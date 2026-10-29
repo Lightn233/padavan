@@ -1,0 +1,9 @@
+# 按实际需要设置监听地址、端口和令牌；防火墙由用户明确配置。
+bindAddr = "0.0.0.0"
+bindPort = 7000
+auth.method = "token"
+auth.token = "请填写独立的连接令牌"
+log.to = "/tmp/frp/frps.log"
+log.level = "warn"
+log.maxDays = 1
+# 默认不开启管理面板；如需开启，请限定管理网段并设置独立密码。

@@ -1,0 +1,12 @@
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -521,7 +521,8 @@
+ {
+ }
+ 
+-static inline void wpa_sm_set_ptk_kck_kek(struct wpa_sm *sm, const u8 *ptk_kck,
++static inline void wpa_sm_set_ptk_kck_kek(struct wpa_sm *sm,
++					  enum rsn_hash_alg hash, const u8 *ptk_kck,
+ 					  size_t ptk_kck_len,
+ 					  const u8 *ptk_kek, size_t ptk_kek_len)
+ {

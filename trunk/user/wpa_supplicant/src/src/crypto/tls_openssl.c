@@ -19,6 +19,9 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(LIBRESSL_VERSION_NUMBER)
+#include <openssl/provider.h>
+#endif
 #include <openssl/pkcs12.h>
 #include <openssl/x509v3.h>
 #ifndef OPENSSL_NO_ENGINE
@@ -196,6 +199,32 @@ static int tls_add_ca_from_keystore_encoded(X509_STORE *ctx,
 #endif /* ANDROID */
 
 static int tls_openssl_ref_count = 0;
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(LIBRESSL_VERSION_NUMBER)
+static OSSL_PROVIDER *tls_default_provider;
+static OSSL_PROVIDER *tls_legacy_provider;
+
+static void tls_unload_providers(void)
+{
+	OSSL_PROVIDER_unload(tls_legacy_provider);
+	OSSL_PROVIDER_unload(tls_default_provider);
+	tls_legacy_provider = NULL;
+	tls_default_provider = NULL;
+}
+
+static int tls_load_providers(void)
+{
+	/* 仅在本进程激活 EAP 所需的旧算法，并保留默认算法。 */
+	tls_default_provider = OSSL_PROVIDER_load(NULL, "default");
+	tls_legacy_provider = OSSL_PROVIDER_load(NULL, "legacy");
+	if (!tls_default_provider || !tls_legacy_provider) {
+		wpa_printf(MSG_ERROR, "OpenSSL: failed to load EAP providers");
+		tls_unload_providers();
+		return -1;
+	}
+	return 0;
+}
+#endif
 static int tls_ex_idx_session = -1;
 
 struct tls_context {
@@ -940,6 +969,13 @@ void * tls_init(const struct tls_config *conf)
 		}
 #endif /* OPENSSL_FIPS */
 #endif /* CONFIG_FIPS */
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(LIBRESSL_VERSION_NUMBER)
+		if (tls_load_providers() < 0) {
+			os_free(tls_global);
+			tls_global = NULL;
+			return NULL;
+		}
+#endif
 #if OPENSSL_VERSION_NUMBER < 0x10100000L || \
 	(defined(LIBRESSL_VERSION_NUMBER) && \
 	 LIBRESSL_VERSION_NUMBER < 0x20700000L)
@@ -982,6 +1018,9 @@ void * tls_init(const struct tls_config *conf)
 		if (context != tls_global)
 			os_free(context);
 		if (tls_openssl_ref_count == 0) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(LIBRESSL_VERSION_NUMBER)
+			tls_unload_providers();
+#endif
 			os_free(tls_global);
 			tls_global = NULL;
 		}
@@ -1076,6 +1115,9 @@ void tls_deinit(void *ssl_ctx)
 
 	tls_openssl_ref_count--;
 	if (tls_openssl_ref_count == 0) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(LIBRESSL_VERSION_NUMBER)
+		tls_unload_providers();
+#endif
 #if OPENSSL_VERSION_NUMBER < 0x10100000L || \
 	(defined(LIBRESSL_VERSION_NUMBER) && \
 	 LIBRESSL_VERSION_NUMBER < 0x20700000L)

@@ -848,8 +848,12 @@ next_step:
 
 		if (phase == 3) {
 			inode = f2fs_iget(sb, dni.ino);
-			if (IS_ERR(inode) || is_bad_inode(inode))
+			if (IS_ERR(inode))
 				continue;
+			if (is_bad_inode(inode) || special_file(inode->i_mode)) {
+				iput(inode);
+				continue;
+			}
 
 			/* if inode uses special I/O path, let's go phase 3 */
 			if (f2fs_post_read_required(inode)) {

@@ -3679,7 +3679,7 @@ __reset_rsvds_bits_mask(struct kvm_vcpu *vcpu,
 			nonleaf_bit8_rsvd | rsvd_bits(7, 7) |
 			rsvd_bits(maxphyaddr, 51);
 		rsvd_check->rsvd_bits_mask[0][2] = exb_bit_rsvd |
-			nonleaf_bit8_rsvd | gbpages_bit_rsvd |
+			gbpages_bit_rsvd |
 			rsvd_bits(maxphyaddr, 51);
 		rsvd_check->rsvd_bits_mask[0][1] = exb_bit_rsvd |
 			rsvd_bits(maxphyaddr, 51);
@@ -4895,10 +4895,14 @@ static struct shrinker mmu_shrinker = {
 
 static void mmu_destroy_caches(void)
 {
-	if (pte_list_desc_cache)
+	if (pte_list_desc_cache) {
 		kmem_cache_destroy(pte_list_desc_cache);
-	if (mmu_page_header_cache)
+		pte_list_desc_cache = NULL;
+	}
+	if (mmu_page_header_cache) {
 		kmem_cache_destroy(mmu_page_header_cache);
+		mmu_page_header_cache = NULL;
+	}
 }
 
 int kvm_mmu_module_init(void)

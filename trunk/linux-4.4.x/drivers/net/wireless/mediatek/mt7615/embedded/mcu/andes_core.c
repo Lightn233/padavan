@@ -384,8 +384,8 @@ VOID _AndesUnlinkCmdMsg(struct cmd_msg *msg, DL_LIST *list)
 {
 	if (!msg)
 		return;
-
-	DlListDel(&msg->list);
+	if ((msg->list.Next != NULL) && (msg->list.Prev != NULL))
+		DlListDel(&msg->list);
 }
 
 
@@ -638,7 +638,7 @@ VOID AndesCtrlInit(RTMP_ADAPTER *pAd)
 
 
 
-#ifdef RTMP_PCI_SUPPORT
+#if defined(RTMP_PCI_SUPPORT) || defined(RTMP_RBUS_SUPPORT)
 static VOID AndesCtrlPciExit(RTMP_ADAPTER *ad)
 {
 	struct MCU_CTRL *ctl = &ad->MCUCtrl;
@@ -678,8 +678,7 @@ VOID AndesCtrlExit(RTMP_ADAPTER *pAd)
 #ifdef DBG_STARVATION
 		unregister_starv_block(&ctl->block);
 #endif /*DBG_STARVATION*/
-#ifdef RTMP_PCI_SUPPORT
-
+#if defined(RTMP_PCI_SUPPORT) || defined(RTMP_RBUS_SUPPORT)
 		if (IS_PCI_INF(pAd) || IS_RBUS_INF(pAd))
 			AndesCtrlPciExit(pAd);
 
@@ -824,7 +823,9 @@ retransmit:
 		IsComplete = AndesWaitForCompleteTimeout(msg, msg->attr.ctrl.wait_ms_time);
 
 		if (!OS_TEST_BIT(MCU_INIT, &ctl->flags)) {
-			/*If need wait, clean up will trigger complete for here to free msg*/
+			/* 控制器已退出时，先与队列清理和正在处理的回复同步，再释放。 */
+			if (msg->state == wait_ack || msg->state == wait_cmd_out_and_ack)
+				AndesUnlinkCmdMsg(msg, &ctl->ackq);
 			AndesFreeCmdMsg(msg);
 			goto bailout;
 		}

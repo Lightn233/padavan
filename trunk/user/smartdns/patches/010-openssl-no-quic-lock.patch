@@ -1,0 +1,21 @@
+--- a/src/dns_client/client_tls.c
++++ b/src/dns_client/client_tls.c
+@@ -327,7 +327,7 @@
+ 	}
+ 
+ #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
+-#if (OPENSSL_VERSION_NUMBER >= 0x30200000L)
++#if defined(OSSL_QUIC1_VERSION) && !defined(OPENSSL_NO_QUIC)
+ 	if (is_quic) {
+ 		*ssl_ctx = SSL_CTX_new(OSSL_QUIC_client_method());
+ 	} else {
+@@ -335,7 +335,8 @@
+ 	}
+ #else
+ 	if (is_quic) {
+-		return NULL;
++		/* 当前库未启用 QUIC，退出时仍须释放服务器列表锁。 */
++		goto errout;
+ 	}
+ 	*ssl_ctx = SSL_CTX_new(TLS_client_method());
+ #endif

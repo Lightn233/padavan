@@ -15,6 +15,11 @@ MAKE_FLAGS += \
 	COPTS="$(TARGET_CFLAGS)" \
 	INSTALL="install"
 
+# ROMFS 只安装这三个程序；未安装的旧 logwtmp 插件不参与构建。
+define Build/Compile
+	$(call Build/Compile/Default,pptpd pptpctrl bcrelay)
+endef
+
 $(eval $(call BuildPackage,pptpd))
 
 romfs:

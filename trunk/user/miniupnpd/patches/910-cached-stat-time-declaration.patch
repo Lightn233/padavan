@@ -1,0 +1,10 @@
+--- a/linux/getifstats.c
++++ b/linux/getifstats.c
+@@ -13,6 +13,7 @@
+ 
+ #include "config.h"
+ #include "../getifstats.h"
++#include "../upnputils.h"
+ 
+ #ifdef GET_WIRELESS_STATS
+ #include <unistd.h>

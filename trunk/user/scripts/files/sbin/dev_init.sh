@@ -8,6 +8,14 @@ size_tmp="24M"
 size_var="4M"
 size_etc="6M"
 
+# 可用 RAM 至少 256 MiB 且未使用低内存模式时，提高 RAM 文件系统容量上限。
+# 这些值仅设定容量上限，文件写入时才实际占用内存。
+ram_kib=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo)
+if [ "$1" != "-l" ] && [ "$ram_kib" -ge 262144 ]; then
+    size_tmp="64M"
+    size_etc="16M"
+fi
+
 if [ "$1" == "-l" ] ; then
 	size_tmp="8M"
 	size_var="1M"

@@ -175,7 +175,7 @@ void update_router_mode();
 char *mac_conv(const char *mac_nvkey, int idx, char *buf);
 char *mac_conv2(const char *mac_nvkey, int idx, char *buf);
 void get_eeprom_params(void);
-void char_to_ascii(char *output, char *input);
+int char_to_ascii(char *output, size_t capacity, const char *input);
 unsigned int get_param_int_hex(const char *param);
 void load_user_config(FILE *fp, const char *dir_name, const char *file_name, const char **forbid_list);
 int is_module_loaded(const char *module_name);
@@ -346,6 +346,7 @@ int ipv6_from_string(const char *str, struct in6_addr *addr6);
 int ipv6_to_net(struct in6_addr *addr6, int prefix);
 int ipv6_to_host(struct in6_addr *addr6, int prefix);
 int ipv6_to_ipv4_map(struct in6_addr *addr6, int size6, struct in_addr *addr4, int size4);
+int ipv6_append_prefix(char *text, size_t capacity, int prefix);
 int ipv6_compact(const char *str6, char *p_comp6, int allow_prefix);
 
 /* net_lan6.c */

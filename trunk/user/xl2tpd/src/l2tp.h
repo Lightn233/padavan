@@ -42,9 +42,25 @@ typedef unsigned long long _u64;
 
 #define CONTROL_PIPE "/var/run/xl2tpd-control"
 #define CONTROL_PIPE_MESSAGE_SIZE 1024
+#define UNUSED(x) (void)(x)
+
+/* Control pip request types */
+#define CONTROL_PIPE_REQ_LAC_REMOVE 'r'
+#define CONTROL_PIPE_REQ_LAC_ADD_MODIFY 'a'
+#define CONTROL_PIPE_REQ_LAC_STATUS 's'
+#define CONTROL_PIPE_REQ_LAC_DISCONNECT 'd'
+#define CONTROL_PIPE_REQ_LAC_HANGUP 'h'
+#define CONTROL_PIPE_REQ_LAC_OUTGOING_CALL 'o'
+#define CONTROL_PIPE_REQ_LAC_CONNECT 'c'
+#define CONTROL_PIPE_REQ_TUNNEL 't'
+
+#define CONTROL_PIPE_REQ_LNS_ADD_MODIFY 'z' /* Create or modify an existing LNS */
+#define CONTROL_PIPE_REQ_LNS_STATUS 'y'     /* Get status of LNS */
+#define CONTROL_PIPE_REQ_AVAILABLE 'x'     /* Get status of LNS */
+#define CONTROL_PIPE_REQ_LNS_REMOVE 'w'     /* Get status of LNS */
 
 #define BINARY "xl2tpd"
-#define SERVER_VERSION "xl2tpd-1.3.10"
+#define SERVER_VERSION "xl2tpd-1.3.20"
 #define VENDOR_NAME "xelerance.com"
 #ifndef PPPD
 #define PPPD		"/usr/sbin/pppd"
@@ -64,11 +80,11 @@ struct control_hdr
     _u16 Nr;                    /* Next received */
 } __attribute__((packed));
 
-#define CTBIT(ver) (ver & 0x8000)       /* Determins if control or not */
+#define CTBIT(ver) (ver & 0x8000)       /* Determines if control or not */
 #define CLBIT(ver) (ver & 0x4000)       /* Length bit present.  Must be 1
                                            for control messages */
 
-#define CZBITS(ver) (ver &0x37F8)       /* Reserved bits:  We must drop 
+#define CZBITS(ver) (ver &0x37F8)       /* Reserved bits:  We must drop
                                            anything with these there */
 
 #define CFBIT(ver) (ver & 0x0800)       /* Presence of Ns and Nr fields
@@ -96,10 +112,14 @@ struct payload_hdr
 #define PAYLOAD_BUF 10          /* Provide 10 expansion bytes
                                    so we can "decompress" the
                                    payloads and simplify coding */
+#if 1
+#define DEFAULT_MAX_RETRIES 5   /* Recommended value from spec */
+#else
+#define DEFAULT_MAX_RETRIES 95   /* give us more time to debug */
+#endif
 
-#define DEFAULT_MAX_RETRIES  5   /* Recommended value from spec */
-
-#define DEFAULT_RWS_SIZE	8    /* Default max outstanding control packets in queue */
+#define DEFAULT_RWS_SIZE   8    /* Default max outstanding
+                                   control packets in queue */
 #define DEFAULT_TX_BPS		100000000        /* For outgoing calls, report this speed */
 #define DEFAULT_RX_BPS		100000000
 #define DEFAULT_MAX_BPS		100000000        /* jz: outgoing calls max bps */
@@ -164,8 +184,8 @@ struct tunnel
     struct call *self;
     struct lns *lns;            /* LNS that owns us */
     struct lac *lac;            /* LAC that owns us */
-    struct in_pktinfo my_addr;	/* Address of my endpoint */
-    struct rtentry rt;		/* Route added to destination */
+    struct rtentry rt;          /* 仅记录本进程添加、需撤回的路由。 */
+    struct in_pktinfo my_addr;  /* Address of my endpoint */
     char hostname[MAXSTRLEN];   /* Remote hostname */
     char vendor[MAXSTRLEN];     /* Vendor of remote product */
     struct challenge chal_us;   /* Their Challenge to us */
@@ -222,22 +242,20 @@ extern int switch_io;           /* jz */
 extern int control_fd;
 #ifdef USE_KERNEL
 extern int kernel_support;
-extern int connect_pppol2tp(struct tunnel *t);
+extern int connect_pppol2tp (struct tunnel *t);
 #endif
 extern int start_pppd (struct call *c, struct ppp_opts *);
 extern void magic_lac_dial (void *);
 extern int get_entropy (unsigned char *, int);
+
+int route_add(struct in_addr addr, int any_gateway, struct rtentry *route);
+int route_del(struct rtentry *route);
 
 #ifndef MIN
 #define MIN(a,b) (((a)<(b)) ? (a) : (b))
 #endif
 #endif
 
-/* Route manipulation */
-#define sin_addr(s) (((struct sockaddr_in *)(s))->sin_addr)
-#define route_msg(args...) l2tp_log(LOG_ERR, ## args)
-extern int route_add(const struct in_addr inetaddr, int any_dgw, struct rtentry *rt);
-extern int route_del(struct rtentry *rt);
 
 /*
  * This is just some stuff to take

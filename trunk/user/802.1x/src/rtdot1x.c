@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 
 #include <stdlib.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <netinet/in.h>
@@ -647,7 +648,7 @@ int main(int argc, char *argv[])
 	c = (int)strlen(prefix_name);
 	if (c > 1)
 	{
-		if (isdigit(prefix_name[c-1]))
+		if (isdigit((unsigned char)prefix_name[c-1]))
 			prefix_name[c-1] = '\0';
 	}
 	else

@@ -16,7 +16,7 @@
 #ifndef _FILE_H
 #define _FILE_H
 
-#define STRLEN 100               /* Length of a string */
+#define STRLEN 100              /* Length of a string */
 
 /* Definition of a keyword */
 struct keyword
@@ -55,8 +55,8 @@ struct host
 #ifndef DEFAULT_CONFIG_FILE
 #define DEFAULT_CONFIG_FILE "/etc/xl2tpd.conf"
 #endif
-#define ALT_DEFAULT_AUTH_FILE ""
-#define ALT_DEFAULT_CONFIG_FILE ""
+#define ALT_DEFAULT_AUTH_FILE "/etc/l2tpd/l2tp-secrets"
+#define ALT_DEFAULT_CONFIG_FILE "/etc/l2tp/l2tpd.conf"
 #define DEFAULT_PID_FILE "/var/run/xl2tpd.pid"
 
 /* Definition of an LNS */
@@ -129,8 +129,8 @@ struct lac
     int chap_refuse;            /* Refuse CHAP authentication for us */
     int idle;                   /* Idle timeout in seconds */
     int autodial;               /* Try to dial immediately? */
+    int route_rdgw;             /* 保留物理上联到拨号服务器的路由。 */
     int defaultroute;           /* Use as default route? */
-    int route_rdgw;             /* Add route to remote host via default gateway */
     int redial;                 /* Redial if disconnected */
     int rmax;                   /* Maximum # of consecutive redials */
     int rtries;                 /* # of tries so far */
@@ -146,12 +146,14 @@ struct global
 {
     unsigned int listenaddr;    /* IP address to bind to */ 
     int port;                   /* Port number to listen to */
+
     char authfile[STRLEN];      /* File containing authentication info */
     char altauthfile[STRLEN];   /* File containing authentication info */
     char configfile[STRLEN];    /* File containing configuration info */
     char altconfigfile[STRLEN]; /* File containing configuration info */
     char pidfile[STRLEN];       /* File containing the pid number*/
     char controlfile[STRLEN];   /* Control file name (named pipe) */
+    char controltos[STRLEN];    /* Control TOS value */
     int daemon;                 /* Use daemon mode? */
     int syslog;                 /* Use syslog for logging? */
     int accesscontrol;          /* Use access control? */
@@ -165,6 +167,9 @@ struct global
     int sarefnum;		/* Value of IPSEC_REFINFO used by kernel
 				 * (we used to pick 22, but 2.6.36+ took that, so now we pick 30)
 				 * Changed in SAref patch in openswan 2.6.36 for linux 2.6.36+ */
+    int max_retries;            /* Max retries before closing tunnel
+                                   or stop re-transmitting */
+    int cap_backoff;		/* Limit seconds between exponential backoff */
 };
 
 extern struct global gconfig;   /* Global configuration options */
@@ -179,4 +184,5 @@ extern int init_config ();      /* Read in the config file */
 extern int parse_one_option (char *word, char *value, int context, void *item);
 /* Allocate memory and filled up new lac */
 extern struct lac *new_lac ();
+extern struct lns *new_lns ();
 #endif

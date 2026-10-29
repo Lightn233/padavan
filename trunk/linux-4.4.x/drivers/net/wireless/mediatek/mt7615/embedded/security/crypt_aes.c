@@ -1572,10 +1572,17 @@ INT AES_Key_Unwrap(
 	UINT8 IV[8], Block_B[16], Block_Input[16];
 	UINT8 *pResult;
 	UINT  Temp_Length = 0, Number_Of_Block = 0, PlainLength;
-	INT   Index_i = 0, Index_j = 0;
+	INT   Index_i = 0, Index_j = 0, byte;
+	UINT64 counter;
+	UINT8 integrity = 0;
 	/*
 	 * 0. Check input parameter
 	 */
+	/* RFC 3394 至少包含两个数据块；先拒绝短包和非整块输入。 */
+	*PlainTextLength = 0;
+	if (CipherTextLength < 3 * AES_KEY_WRAP_BLOCK_SIZE ||
+		CipherTextLength % AES_KEY_WRAP_BLOCK_SIZE != 0)
+		return -1;
 	PlainLength = CipherTextLength - AES_KEY_WRAP_IV_LENGTH;
 
 	if ((KeyLength != AES_KEY128_LENGTH) && (KeyLength != AES_KEY192_LENGTH) && (KeyLength != AES_KEY256_LENGTH)) {
@@ -1603,7 +1610,12 @@ INT AES_Key_Unwrap(
 	 */
 	for (Index_j = 5; Index_j >= 0; Index_j--) {
 		for (Index_i = (Number_Of_Block - 1); Index_i >= 0; Index_i--) {
-			IV[7] = IV[7] ^ ((Number_Of_Block * Index_j) + Index_i + 1);
+			/* 计数器按大端异或完整八字节，不能只保留最低字节。 */
+			counter = (UINT64)Number_Of_Block * Index_j + Index_i + 1;
+			for (byte = 7; byte >= 0; byte--) {
+				IV[byte] ^= (UINT8)counter;
+				counter >>= 8;
+			}
 			NdisMoveMemory(Block_Input, IV, 8);
 			NdisMoveMemory(Block_Input + 8, pResult + (Index_i * 8), 8);
 			Temp_Length = sizeof(Block_B);
@@ -1616,6 +1628,13 @@ INT AES_Key_Unwrap(
 	/*
 	 * 3. Output the results
 	 */
+	/* 完整性校验失败时不返回明文，也不安装密钥。 */
+	for (byte = 0; byte < AES_KEY_WRAP_IV_LENGTH; byte++)
+		integrity |= IV[byte] ^ 0xa6;
+	if (integrity != 0) {
+		os_free_mem(pResult);
+		return -3;
+	}
 	*PlainTextLength = PlainLength;
 	NdisMoveMemory(PlainText, pResult, PlainLength);
 	os_free_mem(pResult);

@@ -933,7 +933,7 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 	if (err) {
 		dev_err(&dev->pdev->dev, "Firmware over %d MS in pre-initializing state, aborting\n",
 			FW_PRE_INIT_TIMEOUT_MILI);
-		goto out;
+		goto out_err;
 	}
 
 	err = mlx5_cmd_init(dev);
@@ -1276,15 +1276,43 @@ static pci_ers_result_t mlx5_pci_err_detected(struct pci_dev *pdev,
 	dev_info(&pdev->dev, "%s was called\n", __func__);
 	mlx5_enter_error_state(dev);
 	mlx5_unload_one(dev, priv);
+	pci_save_state(pdev);
 	mlx5_pci_disable_device(dev);
 	return state == pci_channel_io_perm_failure ?
 		PCI_ERS_RESULT_DISCONNECT : PCI_ERS_RESULT_NEED_RESET;
 }
 
+/* wait for the device to show vital signs by waiting
+ * for the health counter to start counting.
+ */
+static int wait_vital(struct pci_dev *pdev)
+{
+	struct mlx5_core_dev *dev = pci_get_drvdata(pdev);
+	struct mlx5_core_health *health = &dev->priv.health;
+	const int niter = 100;
+	u32 last_count = 0;
+	u32 count;
+	int i;
+
+	for (i = 0; i < niter; i++) {
+		count = ioread32be(health->health_counter);
+		if (count && count != 0xffffffff) {
+			if (last_count && last_count != count) {
+				dev_info(&pdev->dev, "Counter value 0x%x after %d iterations\n", count, i);
+				return 0;
+			}
+			last_count = count;
+		}
+		msleep(50);
+	}
+
+	return -ETIMEDOUT;
+}
+
 static pci_ers_result_t mlx5_pci_slot_reset(struct pci_dev *pdev)
 {
 	struct mlx5_core_dev *dev = pci_get_drvdata(pdev);
-	int err = 0;
+	int err;
 
 	dev_info(&pdev->dev, "%s was called\n", __func__);
 
@@ -1294,58 +1322,21 @@ static pci_ers_result_t mlx5_pci_slot_reset(struct pci_dev *pdev)
 			, __func__, err);
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
+
 	pci_set_master(pdev);
-	pci_set_power_state(pdev, PCI_D0);
 	pci_restore_state(pdev);
 
-	return err ? PCI_ERS_RESULT_DISCONNECT : PCI_ERS_RESULT_RECOVERED;
+	if (wait_vital(pdev)) {
+		dev_err(&pdev->dev, "%s: wait_vital timed out\n", __func__);
+		return PCI_ERS_RESULT_DISCONNECT;
+	}
+
+	return PCI_ERS_RESULT_RECOVERED;
 }
 
 void mlx5_disable_device(struct mlx5_core_dev *dev)
 {
 	mlx5_pci_err_detected(dev->pdev, 0);
-}
-
-/* wait for the device to show vital signs. For now we check
- * that we can read the device ID and that the health buffer
- * shows a non zero value which is different than 0xffffffff
- */
-static void wait_vital(struct pci_dev *pdev)
-{
-	struct mlx5_core_dev *dev = pci_get_drvdata(pdev);
-	struct mlx5_core_health *health = &dev->priv.health;
-	const int niter = 100;
-	u32 count;
-	u16 did;
-	int i;
-
-	/* Wait for firmware to be ready after reset */
-	msleep(1000);
-	for (i = 0; i < niter; i++) {
-		if (pci_read_config_word(pdev, 2, &did)) {
-			dev_warn(&pdev->dev, "failed reading config word\n");
-			break;
-		}
-		if (did == pdev->device) {
-			dev_info(&pdev->dev, "device ID correctly read after %d iterations\n", i);
-			break;
-		}
-		msleep(50);
-	}
-	if (i == niter)
-		dev_warn(&pdev->dev, "%s-%d: could not read device ID\n", __func__, __LINE__);
-
-	for (i = 0; i < niter; i++) {
-		count = ioread32be(health->health_counter);
-		if (count && count != 0xffffffff) {
-			dev_info(&pdev->dev, "Counter value 0x%x after %d iterations\n", count, i);
-			break;
-		}
-		msleep(50);
-	}
-
-	if (i == niter)
-		dev_warn(&pdev->dev, "%s-%d: could not read device ID\n", __func__, __LINE__);
 }
 
 static void mlx5_pci_resume(struct pci_dev *pdev)
@@ -1355,9 +1346,6 @@ static void mlx5_pci_resume(struct pci_dev *pdev)
 	int err;
 
 	dev_info(&pdev->dev, "%s was called\n", __func__);
-
-	pci_save_state(pdev);
-	wait_vital(pdev);
 
 	err = mlx5_load_one(dev, priv);
 	if (err)
@@ -1393,7 +1381,7 @@ static struct pci_driver mlx5_core_driver = {
 	.err_handler	= &mlx5_err_handler
 };
 
-static int __init init(void)
+static int __init mlx5_init(void)
 {
 	int err;
 
@@ -1414,7 +1402,7 @@ err_debug:
 	return err;
 }
 
-static void __exit cleanup(void)
+static void __exit mlx5_cleanup(void)
 {
 #ifdef CONFIG_MLX5_CORE_EN
 	mlx5e_cleanup();
@@ -1423,5 +1411,5 @@ static void __exit cleanup(void)
 	mlx5_unregister_debugfs();
 }
 
-module_init(init);
-module_exit(cleanup);
+module_init(mlx5_init);
+module_exit(mlx5_cleanup);

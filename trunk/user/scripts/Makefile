@@ -21,6 +21,9 @@ $(eval $(call BuildPackage,scripts))
 romfs:
 	fakeroot ./makedevlinks $(ROMFSDIR)
 	$(CP) $(PKG_BUILD_DIR)/files/* $(ROMFSDIR)/
+	# 用当前源码覆盖旧缓存，确保增量编译包含最新脚本。
+	# 保留上一步复制的构建生成文件，例如 terminfo。
+	$(CP) ./files/* $(ROMFSDIR)/
 ifneq ($(STORAGE_ENABLED),y)
 	rm -f $(ROMFSDIR)/sbin/automount.sh
 endif

@@ -1,11 +1,11 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=xray
-PKG_VERSION:=1.7.5
+PKG_VERSION:=26.10.21
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/XTLS/Xray-core/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=a5fc936136a57a463bf9a895d068fdfa895b168ae6093c58a10208e098b6b2d3
+PKG_HASH:=44ef4874529a03848c90f1fdcfb763350fbc5f1de741ec90e0024d651df25650
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/Xray-core-$(PKG_VERSION)
 
@@ -16,7 +16,7 @@ endef
 
 define Build/Compile
 	(cd $(PKG_BUILD_DIR); \
-		GOOS=linux GOARCH=mipsle CGO_ENABLED=0 \
+		GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 GOTOOLCHAIN=go1.27.3 \
 		go build -v -o xray \
 		-trimpath -ldflags "-s -w -buildid=" \
 		./main; \
@@ -25,6 +25,9 @@ endef
 
 $(eval $(call BuildPackage,xray))
 
-romfs:
+# 配方变更时重新验证构建输入。
+$(STAMP_PREPARED): Makefile
+
+romfs: $(STAMP_BUILT)
 	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/xray $(ROMFSDIR)/usr/bin/xray

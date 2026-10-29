@@ -419,32 +419,35 @@ restart_all_sysctl(void)
 #endif
 }
 
-void
-char_to_ascii(char *output, char *input)
+int
+char_to_ascii(char *output, size_t capacity, const char *input)
 {
-	int i;
-	char tmp[10];
-	char *ptr;
+	static const char hex[] = "0123456789ABCDEF";
+	size_t i, used = 0;
+	const unsigned char *bytes = (const unsigned char *)input;
+	if (!capacity)
+		return -1;
+	output[0] = 0;
 
-	ptr = output;
-
-	for ( i=0; i<strlen(input); i++ ) {
-		if ((input[i]>='0' && input[i] <='9')
-		   ||(input[i]>='A' && input[i]<='Z')
-		   ||(input[i] >='a' && input[i]<='z')
-		   || input[i] == '!' || input[i] == '*'
-		   || input[i] == '(' || input[i] == ')'
-		   || input[i] == '_' || input[i] == '-'
-		   || input[i] == '\'' || input[i] == '.') {
-			*ptr = input[i];
-			ptr ++;
-		} else {
-			sprintf(tmp, "%%%.02X", input[i]);
-			strcpy(ptr, tmp);
-			ptr += 3;
+	for (i = 0; bytes[i]; i++) {
+		unsigned char ch = bytes[i];
+		int plain = (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+		            (ch >= 'a' && ch <= 'z') || strchr("!*()_-' .", ch) != NULL;
+		/* 空格仍按原表单规则编码；所有字节都按无符号值转换。 */
+		if (ch == ' ') plain = 0;
+		if ((plain ? 1U : 3U) >= capacity - used) {
+			output[0] = 0;
+			return -1;
+		}
+		if (plain) output[used++] = ch;
+		else {
+			output[used++] = '%';
+			output[used++] = hex[ch >> 4];
+			output[used++] = hex[ch & 15];
 		}
 	}
-	*(ptr) = '\0';
+	output[used] = 0;
+	return 0;
 }
 
 int
@@ -644,29 +647,19 @@ oom_score_adjust(pid_t pid, int oom_score_adj)
 }
 
 #if defined (USE_NAND_FLASH)
+#include "rwfs_mount.h"
 void mount_rwfs_partition(void)
 {
-	int mtd_rwfs;
-	char dev_ubi[16];
-	const char *mp_rwfs = MP_MTD_RWFS;
-
-	if (nvram_get_int("mtd_rwfs_mount") == 0)
-		return;
-
-	mtd_rwfs = mtd_dev_idx(MTD_PART_NAME_RWFS);
-	if (mtd_rwfs < 3)
-		return;
-
-	module_smart_load("ubi", NULL);
-
-	if (!is_module_loaded("ubi"))
-		return;
-
-	if (doSystem("ubiattach -p /dev/mtd%d -d %d", mtd_rwfs, mtd_rwfs) == 0) {
-		mkdir(mp_rwfs, 0755);
-		snprintf(dev_ubi, sizeof(dev_ubi), "/dev/ubi%d_0", mtd_rwfs);
-		mount(dev_ubi, mp_rwfs, "ubifs", 0, NULL);
-	}
+    int mtd_rwfs;
+    if (nvram_get_int("mtd_rwfs_mount") == 0) return;
+    mtd_rwfs=mtd_dev_idx(MTD_PART_NAME_RWFS);
+    if (mtd_rwfs<3) return;
+    module_smart_load("ubi",NULL);
+    if (!is_module_loaded("ubi")) {
+        logmessage("RWFS","UBI 模块不可用，保留原卷和数据");
+        return;
+    }
+    (void)mount_existing_rwfs(mtd_rwfs,MP_MTD_RWFS);
 }
 
 void umount_rwfs_partition(void)
@@ -694,7 +687,7 @@ void umount_rwfs_partition(void)
 void start_rwfs_optware(void)
 {
 	int mtd_rwfs;
-	char dev_ubi[16];
+	char dev_ubi[32];
 	const char *mp_rwfs = MP_MTD_RWFS;
 
 	if (!check_if_dir_exist(mp_rwfs))

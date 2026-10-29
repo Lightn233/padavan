@@ -161,7 +161,7 @@ static int can_be_chinese_utf8(const uint8_t *str, int sz)
 	if (((sz - len >= 4) && (len >= 2)) &&
 		(hex_char_to_int(str-4) >= 0xe4 && hex_char_to_int(str-4) <= 0xe9)
 		&& ((hex_char_to_int(str-2) >= 0x80 && hex_char_to_int(str-2) <= 0xbf)
-		|| (hex_char_to_int(str) >= 0x80 && hex_char_to_int(str) <= 0xbf))
+		&& (hex_char_to_int(str) >= 0x80 && hex_char_to_int(str) <= 0xbf))
 	) {
 		return 1;
 	}
@@ -178,24 +178,14 @@ static int can_be_chinese_utf8(const uint8_t *str, int sz)
  * @return int
  */
 static int can_be_ascii_utf8(const uint8_t *str, int sz)
-
 {
-	int len = strlen (str);
-	uint8_t the_char = hex_char_to_int(str);
-	if (( len >= 2) &&
-		(the_char >= '0' && the_char <= '9')
-		|| (the_char >= 'A' && the_char <= 'Z')
-		|| (the_char >= 'a' && the_char <= 'z')
-		|| the_char == '!' || the_char == '*'
-		|| the_char == '(' || the_char == ')'
-		|| the_char == '_' || the_char == '-'
-		|| the_char == '\'' || the_char == '.') 
-	{
-		return 1;
-	}
-	return 0;
+	int ch;
+	if (sz < 2 || strlen((const char *)str) < 2)
+		return 0;
+	ch = hex_char_to_int(str);
+	return (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+	       (ch >= 'a' && ch <= 'z') || (ch != 0 && strchr("!*()_-' .", ch) && ch != ' ');
 }
-
 
 /**
  * @param input the string to validate
@@ -203,11 +193,11 @@ static int can_be_ascii_utf8(const uint8_t *str, int sz)
  * @date 2016-08-01 12:30
  * @return int
  */
-static int is_valid_hex_string(uint8_t *input)
+static int is_valid_hex_string(const uint8_t *input)
 {
 	int i;
 	int input_len, input_hex_len;
-	char *input_ptr;
+	const uint8_t *input_ptr;
 
 	//detect from index 2, skip char "0x"
 	input_ptr = input+2;
@@ -218,7 +208,7 @@ static int is_valid_hex_string(uint8_t *input)
 
 	//0xAA
 	if(input_len >4 && input_len % 2 == 0 && input[0] == '0' && input[1] == 'x') {
-		for ( i=2; i < input_len; i += 2) {
+		for ( i=2; i < input_len; i += 2, input_ptr += 2) {
 			if (!( ((*input_ptr>='0' && *input_ptr <='9') || ( *input_ptr >='A' && *input_ptr <='F')) && ((*(input_ptr+1) >='0' && *(input_ptr+1) <='9') || ( *(input_ptr+1) >='A' && *(input_ptr+1) <='F')))) {
 				is_valid_ascii_or_Chinese = 0;
 				break;
@@ -234,46 +224,42 @@ static int is_valid_hex_string(uint8_t *input)
 	return is_valid_ascii_or_Chinese;
 }
 
-void char_to_ascii(char *output, uint8_t *input)
+int
+char_to_ascii(char *output, size_t capacity, const char *input)
 {
-	int i;
-	char tmp[10];
-	char *ptr;
-	int input_len;
-
-	ptr = output;
-	input_len = strlen(input);
-
-	if (is_valid_hex_string(input)) {
-		for ( i=2; i<input_len; i+=2) {
-			sprintf(tmp, "%%%c%c", input[i], input[i+1]);
-			strcpy(ptr, tmp);
-			ptr+=3;
+	static const char hex[] = "0123456789ABCDEF";
+	size_t i, used = 0;
+	const unsigned char *bytes = (const unsigned char *)input;
+	if (!capacity)
+		return -1;
+	output[0] = 0;
+	if (is_valid_hex_string(bytes)) {
+		for (i = 2; bytes[i]; i += 2) {
+			if (3 >= capacity - used) { output[0] = 0; return -1; }
+			output[used++] = '%'; output[used++] = bytes[i]; output[used++] = bytes[i+1];
 		}
-	} else {
-		for ( i=0; i<input_len; i++ )
-		{
-			if ((input[i]>='0' && input[i] <='9')
-			   ||(input[i]>='A' && input[i]<='Z')
-			   ||(input[i] >='a' && input[i]<='z')
-			   || input[i] == '!' || input[i] == '*'
-			   || input[i] == '(' || input[i] == ')'
-			   || input[i] == '_' || input[i] == '-'
-			   || input[i] == '\'' || input[i] == '.')
-			{
-				*ptr = input[i];
-				ptr++;
-			}
-			else
-			{
-				sprintf(tmp, "%%%.02X", input[i]);
-				strcpy(ptr, tmp);
-				ptr+=3;
-			}
+		output[used] = 0;
+		return 0;
+	}
+	for (i = 0; bytes[i]; i++) {
+		unsigned char ch = bytes[i];
+		int plain = (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+		            (ch >= 'a' && ch <= 'z') || strchr("!*()_-' .", ch) != NULL;
+		/* 空格仍按原表单规则编码；所有字节都按无符号值转换。 */
+		if (ch == ' ') plain = 0;
+		if ((plain ? 1U : 3U) >= capacity - used) {
+			output[0] = 0;
+			return -1;
+		}
+		if (plain) output[used++] = ch;
+		else {
+			output[used++] = '%';
+			output[used++] = hex[ch >> 4];
+			output[used++] = hex[ch & 15];
 		}
 	}
-
-	*ptr = '\0';
+	output[used] = 0;
+	return 0;
 }
 
 int do_f(const char *path, webs_t wp)

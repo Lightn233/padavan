@@ -2331,10 +2331,7 @@ INT RTMPAPSetInformation(
 					}
 					{
 						ap_send_broadcast_deauth(pAd, wdev);
-						if ((&wdev->AuthMode) && (&wdev->WpaMixPairCipher))
-							pMbss->CapabilityInfo |= 0x0010;
-						else
-							pMbss->CapabilityInfo &= ~(0x0010);
+						/* 加密能力由下方统一重算；切换信道时保留已有能力。 */
 						if (pAd->Dot11_H.RDMode != RD_SWITCHING_MODE) {
 							MbssKickOutStas(pAd, pObj->ioctl_if, REASON_DISASSOC_INACTIVE);
 							ap_security_init(pAd, wdev, pObj->ioctl_if);
@@ -17754,5 +17751,3 @@ INT Set_FroamAclHoldTime(
 }
 
 #endif
-
-

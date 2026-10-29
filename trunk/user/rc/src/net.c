@@ -229,53 +229,54 @@ remove_vlan_iface(const char *vlan_ifname)
 void
 stop_udpxy(void)
 {
-	char* svcs[] = { "udpxy", "msd_lite", NULL };
+	char* svcs[] = { "udpxy", "msd_lite", "rtp2httpd", NULL };
 
 	kill_services(svcs, 3, 1);
 }
 
+#include "iptv_config.h"
+
 void
 start_udpxy(char *wan_ifname)
 {
-	int port = nvram_get_int("udpxy_enable_x");
-	if (port < 1024)
-		return;
-
-#if defined (APP_MSD_LITE)
-	char *src_conf = "/etc_ro/msd_lite.conf";
-	char *dst_conf = "/etc/storage/msd_lite.conf";
-	if (!check_if_file_exist(dst_conf))
-		doSystem("cp -f %s %s", src_conf, dst_conf);
-	char line[256];
-	FILE *fp1, *fp2;
-	fp1 = fopen(dst_conf, "w");
-	if (fp1) {
-		fp2 = fopen(src_conf, "r");
-		if (fp2) {
-			while (fgets(line, sizeof(line), fp2)){
-				if (strstr(line, "<ifName>"))
-					snprintf(line, sizeof(line), "\t\t\t\t<ifName>%s</ifName>\n", wan_ifname);
-				else if (strstr(line, "<bind><address>0.0.0.0:"))
-					snprintf(line, sizeof(line), "\t\t\t<bind><address>0.0.0.0:%d</address><fAcceptFilter>y</fAcceptFilter></bind>\n", port);
-				else if (strstr(line, "<bind><address>[::]:"))
-					snprintf(line, sizeof(line), "\t\t\t<bind><address>[::]:%d</address></bind>\n", port);
-				fprintf(fp1, "%s", line);
-			}
-			fclose(fp2);
-		}
-		fclose(fp1);
-	}
-	nvram_set("msd_lite_enable", "1");
-	eval("/usr/bin/msd_lite", "-d", "-c", dst_conf);
-#else
-	eval("/usr/sbin/udpxy",
-		"-m", wan_ifname,
-		"-p", nvram_safe_get("udpxy_enable_x"),
-		"-B", "65536",
-		"-c", nvram_safe_get("udpxy_clients"),
-		"-M", nvram_safe_get("udpxy_renew_period")
-		);
+    int port = nvram_get_int("udpxy_enable_x");
+    const char *backend = nvram_safe_get("iptv_proxy");
+#if defined(APP_MSD_LITE) && !defined(APP_RTP2HTTPD)
+    if (!*backend) backend = "msd_lite";
 #endif
+    if (port < 1024 || port > 65535 || !iptv_valid_interface(wan_ifname)) return;
+#if defined(APP_MSD_LITE)
+    if (!strcmp(backend, "msd_lite") || (!*backend && nvram_match("msd_lite_enable", "1"))) {
+        const char *source = check_if_file_exist("/etc/storage/msd_lite.conf") ?
+            "/etc/storage/msd_lite.conf" : "/etc_ro/msd_lite.conf";
+        if (iptv_msd_config(source, "/var/run/msd_lite.conf", wan_ifname, port)) {
+            logmessage("IPTV", "msd_lite 配置生成失败，保留持久配置和原运行文件");
+            return;
+        }
+        eval("/usr/bin/msd_lite", "-d", "-c", "/var/run/msd_lite.conf");
+        return;
+    }
+#endif
+#if defined(APP_RTP2HTTPD)
+    if (!strcmp(backend, "rtp2httpd")) {
+        char listen[16], clients[16];
+        snprintf(listen, sizeof(listen), "%d", port);
+        snprintf(clients, sizeof(clients), "%d", nvram_safe_get_int("udpxy_clients", 10, 1, 256));
+        /* 使用已有组播接口和端口，不改 VLAN、IGMP 或防火墙。 */
+        eval("/sbin/start-stop-daemon", "-S", "-b", "-x", "/usr/bin/rtp2httpd", "--",
+             "-C", "-l", listen, "-i", wan_ifname, "-m", clients,
+             "--pid-file", "/var/run/rtp2httpd.pid");
+        return;
+    }
+#endif
+    if (*backend && strcmp(backend, "udpxy")) {
+        logmessage("IPTV", "所选组播代理未包含在当前固件中");
+        return;
+    }
+    eval("/sbin/udpxy", "-m", wan_ifname,
+         "-p", nvram_safe_get("udpxy_enable_x"), "-B", "65536",
+         "-c", nvram_safe_get("udpxy_clients"),
+         "-M", nvram_safe_get("udpxy_renew_period"));
 }
 
 #if defined(APP_XUPNPD)
@@ -410,7 +411,7 @@ start_xupnpd(char *wan_ifname)
 void
 stop_igmpproxy(char *wan_ifname)
 {
-	char *svcs[] = { "xupnpd", "udpxy", "msd_lite", "igmpproxy", NULL };
+	char *svcs[] = { "xupnpd", "udpxy", "msd_lite", "rtp2httpd", "igmpproxy", NULL };
 
 	/* check used IPTV via VLAN interface */
 	if (wan_ifname) {
@@ -535,6 +536,21 @@ is_ftp_conntrack_loaded(int ftp_port0, int ftp_port1)
 	return 1;
 }
 
+#if defined(USE_HW_NAT) || defined(USE_SFE)
+static int
+acceleration_qos_active(void)
+{
+	/* 限速期间只停用运行中的加速，不改写用户保存的加速偏好。 */
+	if (access("/var/run/sqm/accel-block", F_OK) == 0)
+		return 1;
+#if defined(APP_SQM)
+	if (nvram_get_int("sqm_enable") == 1)
+		return 1;
+#endif
+	return 0;
+}
+#endif
+
 #if defined (USE_HW_NAT)
 static int
 is_hwnat_loaded(void)
@@ -555,6 +571,9 @@ is_hwnat_allow(void)
 		return 0;
 
 	if (hw_nat_mode == 0)
+		return 0;
+
+	if (acceleration_qos_active())
 		return 0;
 
 	return 1;
@@ -712,13 +731,17 @@ reload_nat_modules(void)
 	int sfe_enable = nvram_get_int("sfe_enable");
 	int sfe_loaded = is_module_loaded("fast_classifier");
 
+	/* SQM 还包含入口重定向与分类；启用时统一使用正常网络路径。 */
+	if (acceleration_qos_active())
+		sfe_enable = 0;
+
 	if (sfe_loaded && !sfe_enable) {
 		module_smart_unload("fast_classifier", 1);
 		sfe_loaded = 0;
 	}
 	if (sfe_enable && !sfe_loaded) {
 		module_smart_load("fast_classifier", NULL);
-		sfe_loaded = 1;
+		sfe_loaded = is_module_loaded("fast_classifier");
 	}
 	if (sfe_loaded) {
 		if (sfe_enable == 1)

@@ -1,0 +1,29 @@
+--- a/src/liblcb/src/proto/http_server.c
++++ b/src/liblcb/src/proto/http_server.c
+@@ -453,7 +453,7 @@
+ 	size_t i;
+ 
+ 	SYSLOGD_EX(LOG_DEBUG, "...");
+-	if (NULL == srv || NULL != srv->bnd)
++	if (NULL == srv || NULL == srv->bnd)
+ 		return;
+ 	for (i = 0; i < srv->bind_count; i ++) {
+ 		http_srv_bind_shutdown(srv->bnd[i]);
+@@ -462,14 +462,14 @@
+ 
+ void
+ http_srv_destroy(http_srv_p srv) {
+-	size_t i;
+ 
+ 	SYSLOGD_EX(LOG_DEBUG, "...");
+ 	if (NULL == srv)
+ 		return;
+ 	if (NULL != srv->bnd) {
+-		for (i = 0; i < srv->bind_count; i ++) {
+-			http_srv_bind_remove(srv->bnd[i]);
++		/* 删除会移动数组并减小计数，始终移除最后一个监听对象。 */
++		while (srv->bind_count > 0) {
++			http_srv_bind_remove(srv->bnd[srv->bind_count - 1]);
+ 		}
+ 		free(srv->bnd);
+ 	}

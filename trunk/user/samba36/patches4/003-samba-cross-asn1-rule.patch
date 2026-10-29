@@ -1,0 +1,23 @@
+--- a/third_party/heimdal_build/wscript_build
++++ b/third_party/heimdal_build/wscript_build
+@@ -1,6 +1,7 @@
+ #!/usr/bin/env python
+ 
+ import os
++import shlex
+ from samba_utils import SET_TARGET_TYPE
+ from samba_autoconf import CURRENT_CFLAGS
+ from samba_utils import LOAD_ENVIRONMENT, TO_LIST
+@@ -64,8 +65,11 @@
+     else:
+         template_str = ""
+ 
++    # 使用本次配置的交叉执行器运行目标架构生成器。
++    cross_run = os.environ.get("SAMBA_CROSS_RUN", "")
++    cross_prefix = (" " + shlex.quote(cross_run)) if cross_run else ""
+     asn1_rule = cd_rule + \
+-        no_leak_check + \
++        no_leak_check + cross_prefix + \
+         ' "${ASN1_COMPILE}" ${OPTION_FILE} ${ASN1OPTIONS} ' \
+         + template_str \
+         + ' --one-code-file "${SRC[0].abspath(env)}" ${ASN1NAME}'

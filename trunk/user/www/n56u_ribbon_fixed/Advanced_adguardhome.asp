@@ -21,6 +21,7 @@
 <script type="text/javascript" src="/popup.js"></script>
 <script type="text/javascript" src="/help.js"></script>
 <script type="text/javascript" src="/help_b.js"></script>
+<script src="/adguardhome_backup_ui.js"></script>
 <script>
 var $j = jQuery.noConflict();
 
@@ -40,6 +41,7 @@ function initial(){
 	show_menu(5,16);
 	showmenu();
 	show_footer();
+	aghBackupRefresh();
 
 }
 
@@ -131,7 +133,7 @@ function done_validating(action){
 								<div class="row-fluid">
 									<div id="tabMenu" class="submenuBlock"></div>
 									<div class="alert alert-info" style="margin: 10px;">
-									<p>AdGuard Home 是一款全网广告拦截与反跟踪软件。在您将其安装完毕后，它将保护您所有家用设备，同时您不再需要安装任何客户端软件。随着物联网与连接设备的兴起，掌控您自己的整个网络环境变得越来越重要。默认用户名密码均为adguardhome，可在/etc/storage/adg.sh内修改。
+									<p>AdGuard Home 是一款全网广告拦截与反跟踪软件。在您将其安装完毕后，它将保护您所有家用设备，同时您不再需要安装任何客户端软件。随着物联网与连接设备的兴起，掌控您自己的整个网络环境变得越来越重要。默认用户名密码均为adguardhome，可在/etc/storage/AdGuardHome.yaml内修改。
 									</p>
 									AdGuard Home  主页<a href="https://adguard.com/" target="blank"><i><u>https://adguard.com/</u></i></a>
 									</div>
@@ -159,13 +161,20 @@ function done_validating(action){
 													<option value="0" <% nvram_match_x("","adg_redirect", "0","selected"); %>>无</option>
 													<option value="1" <% nvram_match_x("","adg_redirect", "1","selected"); %>>作为dnsmasq的上游服务器</option>
 													<option value="2" <% nvram_match_x("","adg_redirect", "2","selected"); %>>重定向53端口到AdGuardHome</option>
+													<option value="3" <% nvram_match_x("","adg_redirect", "3","selected"); %>>强制LAN DNS劫持模式</option>
 												</select>
 											</td>
 										</tr>
 										<tr>
+<th>上一版更新备份</th>
+<td><div id="agh_backup_status" role="status">正在读取备份状态…</div>
+<button type="button" id="agh_backup_clean" class="btn" disabled onclick="aghBackupClean()">清理上一版备份</button>
+<button type="button" class="btn" onclick="aghBackupRefresh()">刷新状态</button></td>
+</tr>
+<tr>
 											<th>WEB管理地址:</th>
 											<td>
-											<a href="http://<% nvram_get_x("", "lan_ipaddr"); %>:3030">http://<% nvram_get_x("", "lan_ipaddr"); %>:3030</a>
+											<a href="http://<% nvram_get_x("", "lan_ipaddr"); %>:3000" target="_blank">http://<% nvram_get_x("", "lan_ipaddr"); %>:3000</a>
 											</td>
 										</tr>
 										

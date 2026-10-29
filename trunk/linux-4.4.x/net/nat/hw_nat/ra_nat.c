@@ -1066,7 +1066,7 @@ uint32_t keep_alive_old_pkt_handler(struct sk_buff *skb)
 	eth = (struct ethhdr *)skb_mac_header(skb);
 
 	if (eth->h_dest[0] & 1) {
-		if (ether_addr_equal(eth->h_dest, skb->dev->broadcast) == 0)
+		if (ether_addr_equal(eth->h_dest, skb->dev->broadcast))
 			skb->pkt_type = PACKET_BROADCAST;
 		else
 			skb->pkt_type = PACKET_MULTICAST;
@@ -1074,7 +1074,7 @@ uint32_t keep_alive_old_pkt_handler(struct sk_buff *skb)
 		skb->pkt_type = PACKET_OTHERHOST;
 		for (vir_if_idx = 0; vir_if_idx < MAX_IF_NUM; vir_if_idx++) {
 			dev = dst_port[vir_if_idx];
-			if (dev && ether_addr_equal(eth->h_dest, dev->dev_addr) == 0) {
+			if (dev && ether_addr_equal(eth->h_dest, dev->dev_addr)) {
 				skb->pkt_type = PACKET_HOST;
 				break;
 			}
@@ -2900,8 +2900,8 @@ int32_t ppe_tx_handler(struct sk_buff *skb, int gmac_no)
 #endif
 	which_region = tx_decide_which_region(skb);
 	if (which_region == ALL_INFO_ERROR) {
-		if (pr_debug_ratelimited())
-			pr_info("ppe_tx_handler : ALL_INFO_ERROR\n");
+		/* 日志宏本身负责调试开关和限速，不作为条件表达式。 */
+		pr_debug_ratelimited("ppe_tx_handler : ALL_INFO_ERROR\n");
 		return 1;
 	}
 
@@ -4284,6 +4284,9 @@ void foe_clear_entry(struct neighbour *neigh)
 	const u8 *addrtmp;
 	u8 mac0,mac1,mac2,mac3,mac4,mac5;
 	u32 dip;
+	/* IPv6 邻居和非 IPv4 流表不能按 IPv4 地址布局解释。 */
+	if (neigh->tbl->family != AF_INET)
+		return;
 	dip = (u32)(*daddr);
 	clear = 0;
 	addrtmp = neigh->ha;
@@ -4296,7 +4299,7 @@ void foe_clear_entry(struct neighbour *neigh)
 	
         for (hash_index = 0; hash_index < FOE_4TB_SIZ; hash_index++) {
 		entry = &ppe_foe_base[hash_index];
-		if(entry->bfib1.state == BIND) {
+		if(entry->bfib1.state == BIND && (IS_IPV4_HNAT(entry) || IS_IPV4_HNAPT(entry))) {
 			/*printk("before old mac= %x:%x:%x:%x:%x:%x, new_dip=%x\n",
 				entry->ipv4_hnapt.dmac_hi[3],
 				entry->ipv4_hnapt.dmac_hi[2],
@@ -4436,9 +4439,9 @@ static int32_t ppe_init_mod(void)
 #if defined(CONFIG_RA_HW_NAT_PPTP_L2TP)
 	hnat_pptp_l2tpinit();
 #endif
-	register_netevent_notifier(&Hnat_netevent_nb);
 	init_timer(&hwnat_clear_entry_timer);
 	hwnat_clear_entry_timer.function = hwnat_clear_entry;
+	register_netevent_notifier(&Hnat_netevent_nb);
 
 #if defined (CONFIG_HW_NAT_IPI)
 	HnatIPIInit();
@@ -4449,6 +4452,9 @@ static int32_t ppe_init_mod(void)
 
 static void ppe_cleanup_mod(void)
 {
+	/* 先停止事件来源，再等待定时器结束，最后释放资源。 */
+	unregister_netevent_notifier(&Hnat_netevent_nb);
+	del_timer_sync(&hwnat_clear_entry_timer);
 	NAT_PRINT("Ralink HW NAT Module Disabled\n");
 
 	/* Set GMAC fowrards packet to CPU */
@@ -4487,7 +4493,6 @@ static void ppe_cleanup_mod(void)
 #if defined (CONFIG_HW_NAT_IPI)
 	HnatIPIDeInit();
 #endif
-    unregister_netevent_notifier(&Hnat_netevent_nb);
 }
 
 module_init(ppe_init_mod);

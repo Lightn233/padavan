@@ -184,7 +184,9 @@ unpack_trx:
 	@echo "\033[37;44m   $@   \033[0m"
 	unpack-trx.sh
 
-clean: $(patsubst %,%_clean,tools kernel $(DIRS))
+# 用户程序和库的清理依赖内核配置，等它们完成后再删除内核配置。
+clean: $(patsubst %,%_clean,tools $(DIRS))
+	$(MAKE) kernel_clean
 	rm -rf $(STAGEDIR) $(ROMFSDIR) $(IMAGEDIR) $(MERGE_DIR)
 	rm -rf $(LINUXDIR)/net/ipsec/alg/libaes $(LINUXDIR)/net/ipsec/alg/perlasm
 	rm -f $(LINUXDIR)/arch/mips/ramdisk/*.gz

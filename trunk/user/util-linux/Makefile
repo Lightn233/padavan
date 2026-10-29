@@ -1,96 +1,27 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=util-linux
-PKG_VERSION:=2.33.1
-
+PKG_VERSION:=2.42.4
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.xz
-PKG_SOURCE_URL:=@KERNEL/linux/utils/$(PKG_NAME)/v2.33
-PKG_HASH:=c14bd9f3b6e1792b90db87696e87ec643f9d63efa0a424f092a5a6b2f2dbef21
-
+PKG_SOURCE_URL:=@KERNEL/linux/utils/$(PKG_NAME)/v2.42
+PKG_HASH:=fbd62a100ab7bb8746ba0661255c3c48185b1e9021507c624da01fbc696330ec
 PKG_INSTALL:=1
-
 include $(INCLUDE_DIR)/package.mk
 
-CONFIGURE_ARGS += \
-	--without-tinfo \
-	--without-ncurses \
-	--without-user \
-	--without-cap-ng \
-	--without-util \
-	--without-ncursesw \
-	--without-slang \
-	--without-selinux \
-	--without-audit \
-	--without-udev \
-	--without-python \
-	--without-systemd \
-	--without-btrfs \
-	--without-readline \
-	--enable-libblkid \
-	--enable-libuuid \
-	--disable-cal \
-	--disable-fdformat \
-	--disable-hwclock \
-	--disable-bfs \
-	--disable-minix \
-	--disable-ipcrm \
-	--disable-ipcs \
-	--disable-setterm \
-	--disable-nsenter \
-	--disable-rfkill \
-	--disable-setpriv \
-	--disable-logger \
-	--disable-lslogins \
-	--disable-runuser \
-	--disable-libsmartcols \
-	--disable-raw \
-	--disable-ul \
-	--disable-chfn-chsh \
-	--disable-last \
-	--disable-fdisks \
-	--disable-libfdisk \
-	--disable-zramctl \
-	--disable-mesg \
-	--disable-nologin \
-	--disable-more \
-	--disable-chmem \
-	--disable-lsmem \
-	--disable-bash-completion \
-	--disable-nls \
-	--disable-libmount \
-	--disable-mount \
-	--disable-losetup \
-	--disable-fsck \
-	--disable-partx \
-	--disable-uuidd \
-	--disable-mountpoint \
-	--disable-fallocate \
-	--disable-unshare \
-	--disable-eject \
-	--disable-agetty \
-	--disable-cramfs \
-	--disable-wdctl \
-	--disable-switch_root \
-	--disable-pivot_root \
-	--disable-kill \
-	--disable-utmpdump \
-	--disable-rename \
-	--disable-login \
-	--disable-sulogin \
-	--disable-su \
-	--disable-schedutils \
-	--disable-wall \
-	--disable-use-tty-group \
-	--disable-makeinstall-chown \
-	--disable-makeinstall-setuid
-CONFIGURE_VARS += scanf_cv_type_modifier=no
-
+# Meson 只构建原固件使用的磁盘识别程序和两个库。
+define Build/Configure
+	$(CONFIGURE_VARS) python3 ./build.py configure --source $(PKG_BUILD_DIR) --stage $(STAGING_DIR)
+endef
+define Build/Compile
+	python3 ./build.py compile --source $(PKG_BUILD_DIR) --stage $(STAGING_DIR)
+endef
+define Build/Install
+	python3 ./build.py install --source $(PKG_BUILD_DIR) --stage $(STAGING_DIR)
+endef
 $(eval $(call BuildPackage,util-linux))
 
 romfs:
-	$(INSTALL_DIR) $(ROMFSDIR)/sbin
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/sbin/blkid $(ROMFSDIR)/sbin/blkid
-	$(INSTALL_DIR) $(ROMFSDIR)/lib
-	$(CP) $(PKG_INSTALL_DIR)/lib/libblkid.so* $(ROMFSDIR)/lib/
-	$(CP) $(PKG_INSTALL_DIR)/lib/libuuid.so* $(ROMFSDIR)/lib/
-
+	$(INSTALL_DIR) $(ROMFSDIR)/sbin $(ROMFSDIR)/lib
+	$(INSTALL_BIN) $(STAGING_DIR)/sbin/blkid $(ROMFSDIR)/sbin/blkid
+	$(CP) $(STAGING_DIR)/lib/libblkid.so* $(ROMFSDIR)/lib/
+	$(CP) $(STAGING_DIR)/lib/libuuid.so* $(ROMFSDIR)/lib/

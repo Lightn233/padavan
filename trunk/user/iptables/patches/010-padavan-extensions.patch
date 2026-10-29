@@ -1,0 +1,1023 @@
+--- a/include/linux/netfilter/xt_connmark.h
++++ b/include/linux/netfilter/xt_connmark.h
+@@ -19,6 +19,11 @@
+ 	D_SHIFT_RIGHT,
+ };
+ 
++enum {
++	XT_CONNMARK_VALUE	= (1 << 0),
++	XT_CONNMARK_DSCP	= (1 << 1)
++};
++
+ struct xt_connmark_tginfo1 {
+ 	__u32 ctmark, ctmask, nfmask;
+ 	__u8 mode;
+@@ -29,6 +34,11 @@
+ 	__u8 shift_dir, shift_bits, mode;
+ };
+ 
++struct xt_connmark_tginfo3 {
++	__u32 ctmark, ctmask, nfmask;
++	__u8 shift_dir, shift_bits, mode, func;
++};
++
+ struct xt_connmark_mtinfo1 {
+ 	__u32 mark, mask;
+ 	__u8 invert;
+--- a/extensions/libxt_webstr.c
++++ b/extensions/libxt_webstr.c
+@@ -0,0 +1,198 @@
++/* Shared library add-on to iptables to add string matching support..
++ *.
++ * Copyright (C) 2000 Emmanuel Roger  <winfield@freegates.be>
++ *
++ * ChangeLog
++ *     27.01.2001: Gianni Tedesco <gianni@ecsc.co.uk>
++ *             Changed --tos to --string in save(). Also
++ *             updated to work with slightly modified
++ *             xt_string_info.
++ */
++
++/* Shared library add-on to iptables to add webstr matching support. 
++ *
++ * Copyright (C) 2003, CyberTAN Corporation
++ * All Rights Reserved.
++ *
++ * Description:
++ *   This is shared library, added to iptables, for web content inspection. 
++ *   It was derived from 'string' matching support, declared as above.
++ *
++ * ChangeLog
++ *	2009-09-26: Leonid Lisovskiy <lly.dev@gmail.com>
++ *			Fix save() method, minor parse() optimization.
++ */
++
++
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <getopt.h>
++#include <xtables.h>
++
++#define BM_MAX_NLEN 256
++
++#define BLK_JAVA		0x01
++#define BLK_ACTIVE		0x02
++#define BLK_COOKIE		0x04
++#define BLK_PROXY		0x08
++
++struct xt_webstr_info {
++    char string[BM_MAX_NLEN];
++    u_int16_t invert;
++    u_int16_t len;
++    u_int8_t type;
++};
++
++enum xt_webstr_type
++{
++    XT_WEBSTR_HOST,
++    XT_WEBSTR_URL,
++    XT_WEBSTR_CONTENT
++};
++
++
++/* Function which prints out usage message. */
++static void
++webstr_help(void)
++{
++	printf(
++"WEBSTR match v%s options:\n"
++"--host [!] host               Match a http string in a packet\n"
++"--url [!] url                 Match a http string in a packet\n"
++"--content [!] content         Match a http string in a packet\n"
++"\n",
++XTABLES_VERSION);
++}
++
++static struct option webstr_opts[] = {
++	{ "host",    1, 0, '1' },
++	{ "url",     1, 0, '2' },
++	{ "content", 1, 0, '3' },
++	XT_GETOPT_TABLEEND,
++};
++
++/* Initialize the match. */
++static void
++webstr_init(struct xt_entry_match *m)
++{
++}
++
++static void
++parse_string(const unsigned char *s, struct xt_webstr_info *info)
++{
++	if (strlen(s) < sizeof(info->string)) strcpy(info->string, s);
++	else xtables_error(PARAMETER_PROBLEM, "WEBSTR too long `%s'", s);
++}
++
++static int
++webstr_parse(int c, char **argv, int invert, unsigned int *flags,
++             const void *entry, struct xt_entry_match **match)
++{
++	struct xt_webstr_info *stringinfo = (struct xt_webstr_info *)(*match)->data;
++
++	switch (c) {
++	case '1':
++		stringinfo->type = XT_WEBSTR_HOST;
++		break;
++	case '2':
++		stringinfo->type = XT_WEBSTR_URL;
++		break;
++	case '3':
++		stringinfo->type = XT_WEBSTR_CONTENT;
++		break;
++	default:
++		return 0;
++	}
++
++	if (invert)
++		stringinfo->invert = 1;
++	parse_string(argv[optind-1], stringinfo);
++	stringinfo->len=strlen((char *)&stringinfo->string);
++
++	*flags = 1;
++	return 1;
++}
++
++static void
++print_string(char string[], int invert, int numeric)
++{
++	if (invert)
++		fputc('!', stdout);
++	printf("%s ",string);
++}
++
++/* Final check; must have specified --string. */
++static void
++webstr_check(unsigned int flags)
++{
++	if (!flags)
++		xtables_error(PARAMETER_PROBLEM,
++			   "WEBSTR match: You must specify `--webstr'");
++}
++
++static void
++print_type(unsigned type)
++{
++	switch (type) {
++	case XT_WEBSTR_HOST:
++		printf("%s ", webstr_opts[0].name);
++		break;
++
++	case XT_WEBSTR_URL:
++		printf("%s ", webstr_opts[1].name);
++		break;
++
++	case XT_WEBSTR_CONTENT:
++		printf("%s ", webstr_opts[2].name);
++		break;
++
++	default:
++		printf("ERROR ");
++		break;
++	}
++}
++
++/* Prints out the matchinfo. */
++static void
++webstr_print(const void *ip,
++      const struct xt_entry_match *match,
++      int numeric)
++{
++	struct xt_webstr_info *stringinfo = (struct xt_webstr_info *)match->data;
++
++	printf("webstr: ");
++	print_type(stringinfo->type);
++	print_string(stringinfo->string, stringinfo->invert, numeric);
++}
++
++/* Saves the union xt_matchinfo in parsable form to stdout. */
++static void
++webstr_save(const void *ip, const struct xt_entry_match *match)
++{
++	struct xt_webstr_info *stringinfo = (struct xt_webstr_info *)match->data;
++
++	printf(" --"); print_type(stringinfo->type);
++	print_string(stringinfo->string, stringinfo->invert, 0);
++}
++
++static struct xtables_match webstr = { 
++	.family		= NFPROTO_UNSPEC,
++	.name		= "webstr",
++	.version	= XTABLES_VERSION,
++	.size		= XT_ALIGN(sizeof(struct xt_webstr_info)),
++	.userspacesize	= XT_ALIGN(sizeof(struct xt_webstr_info)),
++	.help		= webstr_help,
++	.init		= webstr_init,
++	.print		= webstr_print,
++	.save		= webstr_save,
++	.parse		= webstr_parse,
++	.final_check	= webstr_check,
++	.extra_opts	= webstr_opts
++};
++
++void _init(void)
++{
++	xtables_register_match(&webstr);
++}
+--- a/extensions/libxt_CT.c
++++ b/extensions/libxt_CT.c
+@@ -363,6 +363,7 @@
+ }
+ 
+ static struct xtables_target ct_target_reg[] = {
++#ifndef NO_LEGACY
+ 	{
+ 		.family		= NFPROTO_UNSPEC,
+ 		.name		= "CT",
+@@ -388,6 +389,7 @@
+ 		.x6_parse	= ct_parse_v1,
+ 		.x6_options	= ct_opts_v1,
+ 	},
++#endif
+ 	{
+ 		.family		= NFPROTO_UNSPEC,
+ 		.name		= "CT",
+@@ -403,6 +405,7 @@
+ 		.x6_options	= ct_opts_v1,
+ 		.xlate		= xlate_ct1_tg,
+ 	},
++#ifndef NO_LEGACY
+ 	{
+ 		.family        = NFPROTO_UNSPEC,
+ 		.name          = "NOTRACK",
+@@ -441,6 +444,7 @@
+ 		.revision      = 0,
+ 		.version       = XTABLES_VERSION,
+ 	},
++#endif
+ };
+ 
+ void _init(void)
+--- a/extensions/libxt_multiport.c
++++ b/extensions/libxt_multiport.c
+@@ -591,6 +591,7 @@
+ }
+ 
+ static struct xtables_match multiport_mt_reg[] = {
++#ifndef NO_LEGACY
+ 	{
+ 		.family        = NFPROTO_IPV4,
+ 		.name          = "multiport",
+@@ -621,6 +622,7 @@
+ 		.x6_options    = multiport_opts,
+ 		.xlate         = multiport_xlate6,
+ 	},
++#endif
+ 	{
+ 		.family        = NFPROTO_IPV4,
+ 		.name          = "multiport",
+--- a/extensions/libipt_FULLCONENAT.c
++++ b/extensions/libipt_FULLCONENAT.c
+@@ -0,0 +1,232 @@
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <getopt.h>
++#include <xtables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv4/ip_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++#ifndef NF_NAT_RANGE_PROTO_RANDOM_FULLY
++#define NF_NAT_RANGE_PROTO_RANDOM_FULLY (1 << 4)
++#endif
++
++enum {
++	O_TO_PORTS = 0,
++	O_RANDOM,
++	O_RANDOM_FULLY,
++	O_TO_SRC,
++};
++
++static void FULLCONENAT_help(void)
++{
++	printf(
++"FULLCONENAT target options:\n"
++" --to-source [<ipaddr>[-<ipaddr>]]\n"
++"				Address to map source to.\n"
++" --to-ports <port>[-<port>]\n"
++"				Port (range) to map to.\n"
++" --random\n"
++"				Randomize source port.\n"
++" --random-fully\n"
++"				Fully randomize source port.\n");
++}
++
++static const struct xt_option_entry FULLCONENAT_opts[] = {
++	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
++	{.name = "to-source", .id = O_TO_SRC, .type = XTTYPE_STRING},
++	XTOPT_TABLEEND,
++};
++
++static void parse_to(const char *orig_arg, struct nf_nat_ipv4_multi_range_compat *mr)
++{
++	char *arg, *dash, *error;
++	const struct in_addr *ip;
++
++	arg = strdup(orig_arg);
++	if (arg == NULL)
++		xtables_error(RESOURCE_PROBLEM, "strdup");
++
++	mr->range[0].flags |= NF_NAT_RANGE_MAP_IPS;
++	dash = strchr(arg, '-');
++
++	if (dash)
++		*dash = '\0';
++
++	ip = xtables_numeric_to_ipaddr(arg);
++	if (!ip)
++		xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++			   arg);
++	mr->range[0].min_ip = ip->s_addr;
++	if (dash) {
++		ip = xtables_numeric_to_ipaddr(dash+1);
++		if (!ip)
++			xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++				   dash+1);
++		mr->range[0].max_ip = ip->s_addr;
++	} else
++		mr->range[0].max_ip = mr->range[0].min_ip;
++
++	free(arg);
++}
++
++static void FULLCONENAT_init(struct xt_entry_target *t)
++{
++	struct nf_nat_ipv4_multi_range_compat *mr = (struct nf_nat_ipv4_multi_range_compat *)t->data;
++
++	/* Actually, it's 0, but it's ignored at the moment. */
++	mr->rangesize = 1;
++}
++
++/* Parses ports */
++static void
++parse_ports(const char *arg, struct nf_nat_ipv4_multi_range_compat *mr)
++{
++	char *end;
++	unsigned int port, maxport;
++
++	mr->range[0].flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (!xtables_strtoui(arg, &end, &port, 0, UINT16_MAX))
++		xtables_param_act(XTF_BAD_VALUE, "FULLCONENAT", "--to-ports", arg);
++
++	switch (*end) {
++	case '\0':
++		mr->range[0].min.tcp.port
++			= mr->range[0].max.tcp.port
++			= htons(port);
++		return;
++	case '-':
++		if (!xtables_strtoui(end + 1, NULL, &maxport, 0, UINT16_MAX))
++			break;
++
++		if (maxport < port)
++			break;
++
++		mr->range[0].min.tcp.port = htons(port);
++		mr->range[0].max.tcp.port = htons(maxport);
++		return;
++	default:
++		break;
++	}
++	xtables_param_act(XTF_BAD_VALUE, "FULLCONENAT", "--to-ports", arg);
++}
++
++static void FULLCONENAT_parse(struct xt_option_call *cb)
++{
++	const struct ipt_entry *entry = cb->xt_entry;
++	int portok;
++	struct nf_nat_ipv4_multi_range_compat *mr = cb->data;
++
++	if (entry->ip.proto == IPPROTO_TCP
++	    || entry->ip.proto == IPPROTO_UDP
++	    || entry->ip.proto == IPPROTO_SCTP
++	    || entry->ip.proto == IPPROTO_DCCP
++	    || entry->ip.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_PORTS:
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++		parse_ports(cb->arg, mr);
++		break;
++	case O_TO_SRC:
++		parse_to(cb->arg, mr);
++		break;
++	case O_RANDOM:
++		mr->range[0].flags |=  NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	case O_RANDOM_FULLY:
++		mr->range[0].flags |=  NF_NAT_RANGE_PROTO_RANDOM_FULLY;
++		break;
++	}
++}
++
++static void
++FULLCONENAT_print(const void *ip, const struct xt_entry_target *target,
++                 int numeric)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = (const void *)target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		struct in_addr a;
++
++		a.s_addr = r->min_ip;
++		printf(" to:%s", xtables_ipaddr_to_numeric(&a));
++		if (r->max_ip != r->min_ip) {
++			a.s_addr = r->max_ip;
++			printf("-%s", xtables_ipaddr_to_numeric(&a));
++		}
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" masq ports: ");
++		printf("%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" random-fully");
++}
++
++static void
++FULLCONENAT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = (const void *)target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		struct in_addr a;
++
++		a.s_addr = r->min_ip;
++		printf(" --to-source %s", xtables_ipaddr_to_numeric(&a));
++		if (r->max_ip != r->min_ip) {
++			a.s_addr = r->max_ip;
++			printf("-%s", xtables_ipaddr_to_numeric(&a));
++		}
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" --to-ports %hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" --random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" --random-fully");
++}
++
++static struct xtables_target fullconenat_tg_reg = {
++	.name		= "FULLCONENAT",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV4,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.help		= FULLCONENAT_help,
++	.init		= FULLCONENAT_init,
++	.x6_parse	= FULLCONENAT_parse,
++	.print		= FULLCONENAT_print,
++	.save		= FULLCONENAT_save,
++	.x6_options	= FULLCONENAT_opts,
++};
++
++void _init(void)
++{
++	xtables_register_target(&fullconenat_tg_reg);
++}
+--- a/extensions/libxt_conntrack.c
++++ b/extensions/libxt_conntrack.c
+@@ -1359,6 +1359,7 @@
+ }
+ 
+ static struct xtables_match conntrack_mt_reg[] = {
++#ifndef NO_LEGACY
+ 	{
+ 		.version       = XTABLES_VERSION,
+ 		.name          = "conntrack",
+@@ -1434,6 +1435,7 @@
+ 		.alias	       = conntrack_print_name_alias,
+ 		.x6_options    = conntrack2_mt_opts,
+ 	},
++#endif
+ 	{
+ 		.version       = XTABLES_VERSION,
+ 		.name          = "conntrack",
+@@ -1466,6 +1468,7 @@
+ 		.x6_options    = conntrack3_mt_opts,
+ 		.xlate	       = conntrack3_mt6_xlate,
+ 	},
++#ifndef NO_LEGACY
+ 	{
+ 		.family        = NFPROTO_UNSPEC,
+ 		.name          = "state",
+@@ -1496,6 +1499,8 @@
+ 		.x6_parse      = state_ct23_parse,
+ 		.x6_options    = state_opts,
+ 	},
++#endif
++#ifndef NO_LEGACY
+ 	{
+ 		.family        = NFPROTO_UNSPEC,
+ 		.name          = "state",
+@@ -1525,6 +1530,7 @@
+ 		.x6_parse      = state_parse,
+ 		.x6_options    = state_opts,
+ 	},
++#endif
+ };
+ 
+ void _init(void)
+--- a/extensions/libxt_CONNMARK.c
++++ b/extensions/libxt_CONNMARK.c
+@@ -22,6 +22,7 @@
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <stdio.h>
++#include <strings.h>
+ #include <xtables.h>
+ #include <linux/netfilter/xt_CONNMARK.h>
+ 
+@@ -44,6 +45,7 @@
+ 	O_CTMASK,
+ 	O_NFMASK,
+ 	O_MASK,
++	O_DSCP_MARK,
+ 	F_SET_MARK         = 1 << O_SET_MARK,
+ 	F_SAVE_MARK        = 1 << O_SAVE_MARK,
+ 	F_RESTORE_MARK     = 1 << O_RESTORE_MARK,
+@@ -56,8 +58,10 @@
+ 	F_CTMASK           = 1 << O_CTMASK,
+ 	F_NFMASK           = 1 << O_NFMASK,
+ 	F_MASK             = 1 << O_MASK,
++	F_DSCP_MARK	   = 1 << O_DSCP_MARK,
+ 	F_OP_ANY           = F_SET_MARK | F_SAVE_MARK | F_RESTORE_MARK |
+-	                     F_AND_MARK | F_OR_MARK | F_XOR_MARK | F_SET_XMARK,
++	                     F_AND_MARK | F_OR_MARK | F_XOR_MARK | F_SET_XMARK |
++			     F_DSCP_MARK,
+ };
+ 
+ static const char *const xt_connmark_shift_ops[] = {
+@@ -109,6 +113,8 @@
+ 	 .excl = F_MASK, .flags = XTOPT_PUT, XTOPT_POINTER(s, nfmask)},
+ 	{.name = "mask", .id = O_MASK, .type = XTTYPE_UINT32,
+ 	 .excl = F_CTMASK | F_NFMASK},
++	{.name = "set-dscpmark", .id = O_DSCP_MARK, .type = XTTYPE_MARKMASK32,
++	 .excl = F_OP_ANY},
+ 	XTOPT_TABLEEND,
+ };
+ #undef s
+@@ -139,6 +145,38 @@
+ 	 .excl = F_MASK, .flags = XTOPT_PUT, XTOPT_POINTER(s, nfmask)},
+ 	{.name = "mask", .id = O_MASK, .type = XTTYPE_UINT32,
+ 	 .excl = F_CTMASK | F_NFMASK},
++	XTOPT_TABLEEND,
++};
++#undef s
++
++#define s struct xt_connmark_tginfo3
++static const struct xt_option_entry connmark_tg_opts_v3[] = {
++	{.name = "set-xmark", .id = O_SET_XMARK, .type = XTTYPE_MARKMASK32,
++	 .excl = F_OP_ANY},
++	{.name = "set-mark", .id = O_SET_MARK, .type = XTTYPE_MARKMASK32,
++	 .excl = F_OP_ANY},
++	{.name = "and-mark", .id = O_AND_MARK, .type = XTTYPE_UINT32,
++	 .excl = F_OP_ANY},
++	{.name = "or-mark", .id = O_OR_MARK, .type = XTTYPE_UINT32,
++	 .excl = F_OP_ANY},
++	{.name = "xor-mark", .id = O_XOR_MARK, .type = XTTYPE_UINT32,
++	 .excl = F_OP_ANY},
++	{.name = "save-mark", .id = O_SAVE_MARK, .type = XTTYPE_NONE,
++	 .excl = F_OP_ANY},
++	{.name = "restore-mark", .id = O_RESTORE_MARK, .type = XTTYPE_NONE,
++	 .excl = F_OP_ANY},
++	{.name = "left-shift-mark", .id = O_LEFT_SHIFT_MARK, .type = XTTYPE_UINT8,
++	 .min = 0, .max = 32},
++	{.name = "right-shift-mark", .id = O_RIGHT_SHIFT_MARK, .type = XTTYPE_UINT8,
++	 .min = 0, .max = 32},
++	{.name = "ctmask", .id = O_CTMASK, .type = XTTYPE_UINT32,
++	 .excl = F_MASK, .flags = XTOPT_PUT, XTOPT_POINTER(s, ctmask)},
++	{.name = "nfmask", .id = O_NFMASK, .type = XTTYPE_UINT32,
++	 .excl = F_MASK, .flags = XTOPT_PUT, XTOPT_POINTER(s, nfmask)},
++	{.name = "mask", .id = O_MASK, .type = XTTYPE_UINT32,
++	 .excl = F_CTMASK | F_NFMASK},
++	{.name = "set-dscpmark", .id = O_DSCP_MARK, .type = XTTYPE_MARKMASK32,
++	 .excl = F_OP_ANY},
+ 	XTOPT_TABLEEND,
+ };
+ #undef s
+@@ -170,6 +208,15 @@
+ );
+ }
+ 
++static void connmark_tg_help_v3(void)
++{
++	connmark_tg_help_v2();
++	printf(
++"  --set-dscpmark value/mask        Save DSCP to conntrack mark value\n"
++);
++}
++
++
+ static void connmark_tg_init(struct xt_entry_target *target)
+ {
+ 	struct xt_connmark_tginfo1 *info = (void *)target->data;
+@@ -194,6 +241,16 @@
+ 	info->shift_bits = 0;
+ }
+ 
++static void connmark_tg_init_v3(struct xt_entry_target *target)
++{
++	struct xt_connmark_tginfo3 *info;
++
++	connmark_tg_init_v2(target);
++	info = (void *)target->data;
++
++	info->func = 0;
++}
++
+ static void CONNMARK_parse(struct xt_option_call *cb)
+ {
+ 	struct xt_connmark_target_info *markinfo = cb->data;
+@@ -248,6 +305,23 @@
+ 		info->ctmark = cb->val.u32;
+ 		info->ctmask = 0;
+ 		break;
++	case O_DSCP_MARK:
++/* we sneaky sneaky this.  nfmask isn't used by the set mark functionality
++ * and by default is set to uint32max.  We can use the top bit as a flag
++ * that we're in DSCP_MARK submode of SET_MARK, if set then it's normal
++ * if unset then we're in DSCP_MARK
++ */
++		info->mode   = XT_CONNMARK_SET;
++		info->ctmark = cb->val.mark;
++		info->ctmask = cb->val.mask;
++		info->nfmask = info->ctmark ? ffs(info->ctmark) - 1 : 0;
++		/* need 6 contiguous bits */
++		if ((~0 & (info->ctmark >> info->nfmask)) != 0x3f)
++			xtables_error(PARAMETER_PROBLEM,
++				"CONNMARK set-dscpmark: need 6 contiguous dscpmask bits");
++		if (info->ctmark & info->ctmask)
++			xtables_error(PARAMETER_PROBLEM,
++				"CONNMARK set-dscpmark: dscpmask/statemask bits overlap");
+ 	case O_SAVE_MARK:
+ 		info->mode = XT_CONNMARK_SAVE;
+ 		break;
+@@ -292,6 +366,78 @@
+ 		info->mode   = XT_CONNMARK_SET;
+ 		info->ctmark = cb->val.u32;
+ 		info->ctmask = 0;
++		break;
++	case O_SAVE_MARK:
++		info->mode = XT_CONNMARK_SAVE;
++		break;
++	case O_RESTORE_MARK:
++		info->mode = XT_CONNMARK_RESTORE;
++		break;
++	case O_MASK:
++		info->nfmask = info->ctmask = cb->val.u32;
++		break;
++	case O_LEFT_SHIFT_MARK:
++		info->shift_dir = D_SHIFT_LEFT;
++		info->shift_bits = cb->val.u8;
++		break;
++	case O_RIGHT_SHIFT_MARK:
++		info->shift_dir = D_SHIFT_RIGHT;
++		info->shift_bits = cb->val.u8;
++		break;
++	default:
++		break;
++	}
++}
++
++static void connmark_tg_parse_v3(struct xt_option_call *cb)
++{
++	struct xt_connmark_tginfo3 *info = cb->data;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_SET_XMARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = cb->val.mark;
++		info->ctmask = cb->val.mask;
++		break;
++	case O_SET_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = cb->val.mark;
++		info->ctmask = cb->val.mark | cb->val.mask;
++		break;
++	case O_AND_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = 0;
++		info->ctmask = ~cb->val.u32;
++		break;
++	case O_OR_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = cb->val.u32;
++		info->ctmask = cb->val.u32;
++		break;
++	case O_XOR_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = cb->val.u32;
++		info->ctmask = 0;
++		break;
++	case O_DSCP_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_DSCP;
++		info->ctmark = cb->val.mark;
++		info->ctmask = cb->val.mask;
++		info->shift_bits = info->ctmark ? ffs(info->ctmark) - 1 : 0;
++		/* need 6 contiguous bits */
++		if ((~0 & (info->ctmark >> info->shift_bits)) != 0x3f)
++			xtables_error(PARAMETER_PROBLEM,
++				"CONNMARK set-dscpmark: need 6 contiguous dscpmask bits");
++		if (info->ctmark & info->ctmask)
++			xtables_error(PARAMETER_PROBLEM,
++				"CONNMARK set-dscpmark: dscpmask/statemask bits overlap");
+ 		break;
+ 	case O_SAVE_MARK:
+ 		info->mode = XT_CONNMARK_SAVE;
+@@ -458,6 +604,65 @@
+ 	}
+ }
+ 
++static void
++connmark_tg_print_v3(const void *ip, const struct xt_entry_target *target,
++                  int numeric)
++{
++	const struct xt_connmark_tginfo3 *info = (const void *)target->data;
++	const char *shift_op = xt_connmark_shift_ops[info->shift_dir];
++
++	switch (info->mode) {
++	case XT_CONNMARK_SET:
++		if (info->func & XT_CONNMARK_DSCP) {
++			printf(" CONNMARK DSCP 0x%x/0x%x",
++			       info->ctmark, info->ctmask);
++		}
++		if (info->func & XT_CONNMARK_VALUE) {
++			if (info->ctmark == 0)
++				printf(" CONNMARK and 0x%x",
++				       (unsigned int)(uint32_t)~info->ctmask);
++			else if (info->ctmark == info->ctmask)
++				printf(" CONNMARK or 0x%x", info->ctmark);
++			else if (info->ctmask == 0)
++				printf(" CONNMARK xor 0x%x", info->ctmark);
++			else if (info->ctmask == 0xFFFFFFFFU)
++				printf(" CONNMARK set 0x%x", info->ctmark);
++			else
++				printf(" CONNMARK xset 0x%x/0x%x",
++				       info->ctmark, info->ctmask);
++		}
++		break;
++	case XT_CONNMARK_SAVE:
++		if (info->nfmask == UINT32_MAX && info->ctmask == UINT32_MAX)
++			printf(" CONNMARK save");
++		else if (info->nfmask == info->ctmask)
++			printf(" CONNMARK save mask 0x%x", info->nfmask);
++		else
++			printf(" CONNMARK save nfmask 0x%x ctmask ~0x%x",
++			       info->nfmask, info->ctmask);
++		break;
++	case XT_CONNMARK_RESTORE:
++		if (info->ctmask == UINT32_MAX && info->nfmask == UINT32_MAX)
++			printf(" CONNMARK restore");
++		else if (info->ctmask == info->nfmask)
++			printf(" CONNMARK restore mask 0x%x", info->ctmask);
++		else
++			printf(" CONNMARK restore ctmask 0x%x nfmask ~0x%x",
++			       info->ctmask, info->nfmask);
++		break;
++
++	default:
++		printf(" ERROR: UNKNOWN CONNMARK MODE");
++		break;
++	}
++
++	if (info->mode <= XT_CONNMARK_RESTORE &&
++	    !(info->mode == XT_CONNMARK_SET && info->func == XT_CONNMARK_DSCP) &&
++	    info->shift_bits != 0) {
++		printf(" %s %u", shift_op, info->shift_bits);
++	}
++}
++
+ static void CONNMARK_save(const void *ip, const struct xt_entry_target *target)
+ {
+ 	const struct xt_connmark_target_info *markinfo =
+@@ -543,6 +748,38 @@
+ 	}
+ }
+ 
++static void
++connmark_tg_save_v3(const void *ip, const struct xt_entry_target *target)
++{
++	const struct xt_connmark_tginfo3 *info = (const void *)target->data;
++	const char *shift_op = xt_connmark_shift_ops[info->shift_dir];
++
++	switch (info->mode) {
++	case XT_CONNMARK_SET:
++		if (info->func & XT_CONNMARK_VALUE)
++			printf(" --set-xmark 0x%x/0x%x", info->ctmark, info->ctmask);
++		if (info->func & XT_CONNMARK_DSCP)
++			printf(" --set-dscpmark 0x%x/0x%x", info->ctmark, info->ctmask);
++		break;
++	case XT_CONNMARK_SAVE:
++		printf(" --save-mark --nfmask 0x%x --ctmask 0x%x",
++		       info->nfmask, info->ctmask);
++		break;
++	case XT_CONNMARK_RESTORE:
++		printf(" --restore-mark --nfmask 0x%x --ctmask 0x%x",
++		       info->nfmask, info->ctmask);
++		break;
++	default:
++		printf(" ERROR: UNKNOWN CONNMARK MODE");
++		break;
++	}
++	if (info->mode <= XT_CONNMARK_RESTORE &&
++	    !(info->mode == XT_CONNMARK_SET && info->func == XT_CONNMARK_DSCP) &&
++	    info->shift_bits != 0) {
++		printf(" --%s %u", shift_op, info->shift_bits);
++	}
++}
++
+ static int connmark_tg_xlate(struct xt_xlate *xl,
+ 			     const struct xt_xlate_tg_params *params)
+ {
+@@ -639,6 +876,66 @@
+ 
+ 	return 1;
+ }
++
++static int connmark_tg_xlate_v3(struct xt_xlate *xl,
++			     const struct xt_xlate_tg_params *params)
++{
++	const struct xt_connmark_tginfo3 *info =
++		(const void *)params->target->data;
++	const char *shift_op = xt_connmark_shift_ops[info->shift_dir];
++
++	switch (info->mode) {
++	case XT_CONNMARK_SET:
++		xt_xlate_add(xl, "ct mark set ");
++		if (info->func & XT_CONNMARK_VALUE) {
++			if (info->ctmask == 0xFFFFFFFFU)
++				xt_xlate_add(xl, "0x%x ", info->ctmark);
++			else if (info->ctmark == 0)
++				xt_xlate_add(xl, "ct mark and 0x%x", ~info->ctmask);
++			else if (info->ctmark == info->ctmask)
++				xt_xlate_add(xl, "ct mark or 0x%x",
++					     info->ctmark);
++			else if (info->ctmask == 0)
++				xt_xlate_add(xl, "ct mark xor 0x%x",
++					     info->ctmark);
++			else
++				xt_xlate_add(xl, "ct mark xor 0x%x and 0x%x",
++					     info->ctmark, ~info->ctmask);
++		}
++		if (info->func & XT_CONNMARK_DSCP) {
++/* FIXME the nftables syntax would go here if only we knew what it was */
++			xt_xlate_add(xl, "ct mark set typeof(ct mark) ip dscp "
++					 "<< %u or 0x%x", info->shift_bits,
++					     info->ctmask);
++		}
++		break;
++	case XT_CONNMARK_SAVE:
++		xt_xlate_add(xl, "ct mark set mark");
++		if (!(info->nfmask == UINT32_MAX &&
++		    info->ctmask == UINT32_MAX)) {
++			if (info->nfmask == info->ctmask)
++				xt_xlate_add(xl, " and 0x%x", info->nfmask);
++		}
++		break;
++	case XT_CONNMARK_RESTORE:
++		xt_xlate_add(xl, "meta mark set ct mark");
++		if (!(info->nfmask == UINT32_MAX &&
++		    info->ctmask == UINT32_MAX)) {
++			if (info->nfmask == info->ctmask)
++				xt_xlate_add(xl, " and 0x%x", info->nfmask);
++		}
++		break;
++	}
++
++	if (info->mode <= XT_CONNMARK_RESTORE &&
++	    !(info->mode == XT_CONNMARK_SET && info->func == XT_CONNMARK_DSCP) &&
++	    info->shift_bits != 0) {
++		xt_xlate_add(xl, " %s %u", shift_op, info->shift_bits);
++	}
++
++	return 1;
++}
++
+ static struct xtables_target connmark_tg_reg[] = {
+ 	{
+ 		.family        = NFPROTO_UNSPEC,
+@@ -687,6 +984,22 @@
+ 		.x6_options    = connmark_tg_opts_v2,
+ 		.xlate         = connmark_tg_xlate_v2,
+ 	},
++	{
++		.version       = XTABLES_VERSION,
++		.name          = "CONNMARK",
++		.revision      = 3,
++		.family        = NFPROTO_UNSPEC,
++		.size          = XT_ALIGN(sizeof(struct xt_connmark_tginfo3)),
++		.userspacesize = XT_ALIGN(sizeof(struct xt_connmark_tginfo3)),
++		.help          = connmark_tg_help_v3,
++		.init          = connmark_tg_init_v3,
++		.print         = connmark_tg_print_v3,
++		.save          = connmark_tg_save_v3,
++		.x6_parse      = connmark_tg_parse_v3,
++		.x6_fcheck     = connmark_tg_check,
++		.x6_options    = connmark_tg_opts_v3,
++		.xlate         = connmark_tg_xlate_v3,
++	},
+ };
+ 
+ void _init(void)
+--- a/libxtables/xtables.c
++++ b/libxtables/xtables.c
+@@ -504,6 +504,7 @@
+ 
+ int xtables_insmod(const char *modname, const char *modprobe, bool quiet)
+ {
++#if 0
+ 	char *buf = NULL;
+ 	char *argv[4];
+ 	int status;
+@@ -538,6 +539,7 @@
+ 	free(buf);
+ 	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+ 		return 0;
++#endif
+ 	return -1;
+ }
+ 
+@@ -1100,12 +1102,6 @@
+ 	struct xtables_match **pos;
+ 	bool seen_myself = false;
+ 
+-	if (me->next) {
+-		fprintf(stderr, "%s: match \"%s\" already registered\n",
+-			xt_params->program_name, me->name);
+-		exit(1);
+-	}
+-
+ 	if (me->version == NULL) {
+ 		fprintf(stderr, "%s: match %s<%u> is missing a version\n",
+ 		        xt_params->program_name, me->name, me->revision);
+@@ -1293,12 +1289,6 @@
+ {
+ 	struct xtables_target **pos;
+ 	bool seen_myself = false;
+-
+-	if (me->next) {
+-		fprintf(stderr, "%s: target \"%s\" already registered\n",
+-			xt_params->program_name, me->name);
+-		exit(1);
+-	}
+ 
+ 	if (me->version == NULL) {
+ 		fprintf(stderr, "%s: target %s<%u> is missing a version\n",
+--- a/iptables/xtables-legacy-multi.c
++++ b/iptables/xtables-legacy-multi.c
+@@ -28,8 +28,10 @@
+ 
+ 
+ #endif
++#ifdef ENABLE_XML
+ 	{"iptables-xml",        iptables_xml_main},
+ 	{"xml",                 iptables_xml_main},
++#endif
+ #ifdef ENABLE_IPV6
+ 	{"ip6tables",           ip6tables_main},
+ 	{"main6",               ip6tables_main},

@@ -3633,6 +3633,10 @@ static int __init d40_probe(struct platform_device *pdev)
 	spin_lock_init(&base->lcla_pool.lock);
 
 	base->irq = platform_get_irq(pdev, 0);
+	if (base->irq < 0) {
+		ret = base->irq;
+		goto failure;
+	}
 
 	ret = request_irq(base->irq, d40_handle_interrupt, 0, D40_NAME, base);
 	if (ret) {
@@ -3715,6 +3719,9 @@ failure:
 
 		kfree(base->lcla_pool.base_unaligned);
 
+		if (base->lcpa_base)
+			iounmap(base->lcpa_base);
+
 		if (base->phy_lcpa)
 			release_mem_region(base->phy_lcpa,
 					   base->lcpa_size);
@@ -3730,6 +3737,7 @@ failure:
 			regulator_disable(base->lcpa_regulator);
 			regulator_put(base->lcpa_regulator);
 		}
+		pm_runtime_disable(base->dev);
 
 		kfree(base->lcla_pool.alloc_map);
 		kfree(base->lookup_log_chans);

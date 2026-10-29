@@ -132,51 +132,6 @@ load_microcode(struct mc_saved_data *mc_saved_data, unsigned long *initrd,
 	}
 }
 
-/*
- * Given CPU signature and a microcode patch, this function finds if the
- * microcode patch has matching family and model with the CPU.
- */
-static enum ucode_state
-matching_model_microcode(struct microcode_header_intel *mc_header,
-			unsigned long sig)
-{
-	unsigned int fam, model;
-	unsigned int fam_ucode, model_ucode;
-	struct extended_sigtable *ext_header;
-	unsigned long total_size = get_totalsize(mc_header);
-	unsigned long data_size = get_datasize(mc_header);
-	int ext_sigcount, i;
-	struct extended_signature *ext_sig;
-
-	fam   = __x86_family(sig);
-	model = x86_model(sig);
-
-	fam_ucode   = __x86_family(mc_header->sig);
-	model_ucode = x86_model(mc_header->sig);
-
-	if (fam == fam_ucode && model == model_ucode)
-		return UCODE_OK;
-
-	/* Look for ext. headers: */
-	if (total_size <= data_size + MC_HEADER_SIZE)
-		return UCODE_NFOUND;
-
-	ext_header   = (void *) mc_header + data_size + MC_HEADER_SIZE;
-	ext_sig      = (void *)ext_header + EXT_HEADER_SIZE;
-	ext_sigcount = ext_header->count;
-
-	for (i = 0; i < ext_sigcount; i++) {
-		fam_ucode   = __x86_family(ext_sig->sig);
-		model_ucode = x86_model(ext_sig->sig);
-
-		if (fam == fam_ucode && model == model_ucode)
-			return UCODE_OK;
-
-		ext_sig++;
-	}
-	return UCODE_NFOUND;
-}
-
 static int
 save_microcode(struct mc_saved_data *mc_saved_data,
 	       struct microcode_intel **mc_saved_src,
@@ -321,8 +276,8 @@ get_matching_model_microcode(int cpu, unsigned long start,
 		 * the platform, we need to find and save microcode patches
 		 * with the same family and model as the BSP.
 		 */
-		if (matching_model_microcode(mc_header, uci->cpu_sig.sig) !=
-			 UCODE_OK) {
+		if (!find_matching_signature(mc_header, uci->cpu_sig.sig,
+					     uci->cpu_sig.pf)) {
 			ucode_ptr += mc_size;
 			continue;
 		}
@@ -847,8 +802,9 @@ static int get_matching_mc(struct microcode_intel *mc_intel, int cpu)
 	return has_newer_microcode(mc_intel, csig, cpf, crev);
 }
 
-static int apply_microcode_intel(int cpu)
+static enum ucode_state apply_microcode_intel(int cpu)
 {
+	enum ucode_state ret = UCODE_UPDATED;
 	struct microcode_intel *mc_intel;
 	struct ucode_cpu_info *uci;
 	u32 rev;
@@ -862,7 +818,7 @@ static int apply_microcode_intel(int cpu)
 	BUG_ON(cpu_num != cpu);
 
 	if (mc_intel == NULL)
-		return 0;
+		return UCODE_NFOUND;
 
 	/*
 	 * Microcode on this CPU could be updated earlier. Only apply the
@@ -870,7 +826,7 @@ static int apply_microcode_intel(int cpu)
 	 * CPU.
 	 */
 	if (get_matching_mc(mc_intel, cpu) == 0)
-		return 0;
+		return UCODE_OK;
 
 	/*
 	 * Save us the MSR write below - which is a particular expensive
@@ -878,8 +834,10 @@ static int apply_microcode_intel(int cpu)
 	 * already.
 	 */
 	rev = intel_get_microcode_revision();
-	if (rev >= mc_intel->hdr.rev)
+	if (rev >= mc_intel->hdr.rev) {
+		ret = UCODE_OK;
 		goto out;
+	}
 
 	/* write microcode via MSR 0x79 */
 	wrmsr(MSR_IA32_UCODE_WRITE,
@@ -891,7 +849,7 @@ static int apply_microcode_intel(int cpu)
 	if (rev != mc_intel->hdr.rev) {
 		pr_err("CPU%d update to revision 0x%x failed\n",
 		       cpu_num, mc_intel->hdr.rev);
-		return -1;
+		return UCODE_ERROR;
 	}
 	pr_info("CPU%d updated to revision 0x%x, date = %04x-%02x-%02x\n",
 		cpu_num, rev,
@@ -907,7 +865,7 @@ out:
 	if (c->cpu_index == boot_cpu_data.cpu_index)
 		boot_cpu_data.microcode = rev;
 
-	return 0;
+	return ret;
 }
 
 static enum ucode_state generic_load_microcode(int cpu, void *data, size_t size,
@@ -1013,7 +971,7 @@ static bool is_blacklisted(unsigned int cpu)
 	 */
 	if (c->x86 == 6 &&
 	    c->x86_model == 79 &&
-	    c->x86_mask == 0x01 &&
+	    c->x86_stepping == 0x01 &&
 	    llc_size_per_core > 2621440 &&
 	    c->microcode < 0x0b000021) {
 		pr_err_once("Erratum BDF90: late loading with revision < 0x0b000021 (0x%x) disabled.\n", c->microcode);
@@ -1036,7 +994,7 @@ static enum ucode_state request_microcode_fw(int cpu, struct device *device,
 		return UCODE_NFOUND;
 
 	sprintf(name, "intel-ucode/%02x-%02x-%02x",
-		c->x86, c->x86_model, c->x86_mask);
+		c->x86, c->x86_model, c->x86_stepping);
 
 	if (request_firmware_direct(&firmware, name, device)) {
 		pr_debug("data file %s load failed\n", name);

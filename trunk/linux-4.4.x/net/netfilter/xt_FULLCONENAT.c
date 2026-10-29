@@ -42,11 +42,11 @@ static inline int nf_ct_netns_get(struct net *net, u8 nfproto) { return 0; }
 
 static inline void nf_ct_netns_put(struct net *net, u8 nfproto) {}
 
-static inline struct net_device *xt_in(const struct xt_action_param *par) {
+static inline const struct net_device *xt_in(const struct xt_action_param *par) {
   return par->in;
 }
 
-static inline struct net_device *xt_out(const struct xt_action_param *par) {
+static inline const struct net_device *xt_out(const struct xt_action_param *par) {
   return par->out;
 }
 

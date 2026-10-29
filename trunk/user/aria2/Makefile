@@ -1,82 +1,51 @@
-SRC_NAME=aria2-1.36.0
-SRC_URL=https://github.com/aria2/aria2/releases/download/release-1.36.0/aria2-1.36.0.tar.xz
+include $(ROOTDIR)/rules.mk
 
-SRC_ARIA_NG_NAME=AriaNg-1.3.6-AllInOne
-SRC_ARIA_NG_URL=https://github.com/mayswind/AriaNg/releases/download/1.3.6/AriaNg-1.3.6-AllInOne.zip
+PKG_NAME:=aria2
+PKG_VERSION:=1.37.0
+PKG_SOURCE:=aria2-$(PKG_VERSION).tar.xz
+PKG_SOURCE_URL:=https://github.com/aria2/aria2/releases/download/release-$(PKG_VERSION)
+PKG_HASH:=60a420ad7085eb616cb6e2bdf0a7206d68ff3d37fb5a956dc44242eb2f79b66b
+ARIANG_VERSION:=1.3.15
+ARIANG_SOURCE:=AriaNg-$(ARIANG_VERSION)-AllInOne.zip
+ARIANG_HASH:=9918932af1ab0ae3924b938b1c5195b6491dacf15908ac0dc440fdba660ac280
 
-CFLAGS  += -fvisibility=hidden
-CXXFLAGS += -fvisibility-inlines-hidden
-LDFLAGS += -static-libstdc++
+include $(INCLUDE_DIR)/package.mk
 
-THISDIR = $(shell pwd)
+CONFIGURE_ARGS += --disable-nls --disable-xmltest --disable-libaria2 \
+	--without-libnettle --without-libgmp --without-libgcrypt --without-libexpat \
+	--without-libcares --without-sqlite3 --without-gnutls \
+	--with-libz --with-openssl --with-libxml2 --with-libiconv-prefix=$(STAGING_DIR)
+CONFIGURE_VARS += ZLIB_CFLAGS="-I$(STAGING_DIR)/include" ZLIB_LIBS="-L$(STAGING_DIR)/lib -lz" \
+	OPENSSL_CFLAGS="-I$(STAGING_DIR)/include" OPENSSL_LIBS="-L$(STAGING_DIR)/lib -lssl -lcrypto" \
+	LIBXML2_CFLAGS="-I$(STAGING_DIR)/include/libxml2" LIBXML2_LIBS="-L$(STAGING_DIR)/lib -lxml2 -lm"
+EXTRA_CFLAGS += -ffunction-sections -fdata-sections -fvisibility=hidden
+EXTRA_LDFLAGS += -static-libstdc++ -static-libgcc -Wl,--gc-sections -Wl,-rpath-link,$(STAGING_DIR)/lib
+$(eval $(call BuildPackage,aria2))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
 
-all: download_test extract_test config_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_ARIA_WEB_CONTROL),y)
-	( if [ ! -f $(THISDIR)/$(SRC_ARIA_NG_NAME).zip ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_ARIA_NG_NAME).zip $(SRC_ARIA_NG_URL); \
-	fi )
-	( if [ ! -d $(THISDIR)/ariaweb ]; then \
-		mkdir -p ariaweb; \
-		unzip -qq $(SRC_ARIA_NG_NAME).zip -d ariaweb; \
-	fi )
+define Download/ariang
+  FILE:=$(ARIANG_SOURCE)
+  URL:=https://github.com/mayswind/AriaNg/releases/download/$(ARIANG_VERSION)
+  HASH:=$(ARIANG_HASH)
+endef
+$(eval $(call Download,ariang))
+ARIANG_DIR:=$(BUILD_DIR)/AriaNg-$(ARIANG_VERSION)
+$(ARIANG_DIR)/.prepared: $(DL_DIR)/$(ARIANG_SOURCE) Makefile
+	printf '%s  %s\n' '$(ARIANG_HASH)' '$(DL_DIR)/$(ARIANG_SOURCE)' | sha256sum -c -
+	mkdir -p '$(ARIANG_DIR)'
+	unzip -o -q '$(DL_DIR)/$(ARIANG_SOURCE)' -d '$(ARIANG_DIR)'
+	test -s '$(ARIANG_DIR)/index.html'
+	touch '$@'
+all: $(ARIANG_DIR)/.prepared
+romfs: $(ARIANG_DIR)/.prepared
 endif
 
-download_test:
-	( if [ ! -f $(SRC_NAME).tar.xz ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.xz $(SRC_URL); \
-	fi )
-
-extract_test:
-	( if [ ! -d $(SRC_NAME) ]; then \
-		tar xf $(SRC_NAME).tar.xz; \
-		patch -d $(SRC_NAME) -p1 -i ../disable-doc-test.patch; \
-	fi )
-
-config_test:
-	( if [ -f ./config_done ]; then \
-		echo "the same configuration"; \
-	else \
-		make configure && touch config_done; \
-	fi )
-
-configure:
-	( cd $(SRC_NAME) ; \
-	./configure \
-		--prefix=/usr \
-		--disable-nls \
-		--disable-xmltest \
-		--without-libnettle \
-		--without-libgmp \
-		--without-libgcrypt \
-		--without-libexpat \
-		--without-libcares \
-		--without-sqlite3 \
-		--without-gnutls \
-		--with-libz \
-		--with-openssl \
-		--with-libxml2 \
-		--with-libiconv-prefix=$(STAGEDIR) \
-		PKG_CONFIG_LIBDIR="$(STAGEDIR)/lib/pkgconfig" \
-		ZLIB_CFLAGS="-I$(STAGEDIR)/include" \
-		ZLIB_LIBS="-L$(STAGEDIR)/lib -lz" \
-		OPENSSL_CFLAGS="-I$(STAGEDIR)/include" \
-		OPENSSL_LIBS="-L$(STAGEDIR)/lib -lssl -lcrypto" \
-		--host=$(HOST_TARGET) \
-		--build=$(HOST_BUILD) ; \
-	)
-
-clean:
-	if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) distclean ; \
-	fi ; \
-	rm -rf ariaweb
-	rm -f config_done
-
-romfs:
+romfs: $(STAMP_BUILT)
+	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/aria2c $(ROMFSDIR)/usr/bin/aria2c
+	$(INSTALL_BIN) ./aria.sh $(ROMFSDIR)/usr/bin/aria.sh
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_ARIA_WEB_CONTROL),y)
-	cp -rf $(THISDIR)/ariaweb $(INSTALLDIR)/www
+	$(INSTALL_DIR) $(ROMFSDIR)/www/ariaweb
+	$(INSTALL_DATA) $(ARIANG_DIR)/index.html $(ROMFSDIR)/www/ariaweb/index.html
 endif
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/src/aria2c /usr/bin/aria2c
-	$(ROMFSINST) -p +x /usr/bin/aria.sh
-

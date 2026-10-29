@@ -700,6 +700,8 @@ static int __f2fs_setxattr(struct inode *inode, int index,
 		memcpy(pval, value, size);
 		last->e_value_size = cpu_to_le16(size);
 		new_hsize += newsize;
+		/* 显式写入结束标记，不依赖未使用区域原先为零。 */
+		memset((u8 *)last + newsize, 0, sizeof(u32));
 	}
 
 	error = write_all_xattrs(inode, new_hsize, base_addr, ipage);

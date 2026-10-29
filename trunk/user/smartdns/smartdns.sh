@@ -342,7 +342,7 @@ Change_dnsmasq () {
     case $action in
     stop)
         sed -i '/no-resolv/d' "$dnsmasq_Conf"
-        sed -i '/server=127.0.0.1#'"$sdns_portd"'/d' "$dnsmasq_Conf"
+        sed -i '/server=127.0.0.1#'"$sdns_ported"'/d' "$dnsmasq_Conf"
         sed -i '/port=0/d' "$dnsmasq_Conf"
         if [ "$sdns_enable" = 0 ] ; then
             [ "$sdns_ported" = "53" ] && logger -t "SmartDNS" "已启用 dnsmasq 域名解析（DNS）功能" 
@@ -483,6 +483,8 @@ Start_smartdns () {
 Stop_smartdns () {
     # 【】
     killall -9 smartdns >/dev/null 2>&1
+    # 未接管过 DNS 时，停止操作不能删除其他服务的 dnsmasq 配置。
+    [ -s "$smartdns_Ini" ] || return 0
     logger -t "SmartDNS" "结束smartdns进程 ．．．"
     Change_adbyby
     Change_dnsmasq
@@ -542,5 +544,18 @@ Main () {
     esac
     }
 
+# 启动前检查冲突，不能先改 DNS 再发现 AdGuardHome 已占用。
+case "$action" in
+start|restart|reset)
+    case "$sdns_port" in ''|*[!0-9]*) logger -t SmartDNS "监听端口无效"; exit 1;; esac
+    [ "$sdns_port" -ge 1 ] && [ "$sdns_port" -le 65535 ] || exit 1
+    if [ "$(nvram get adg_enable)" = 1 ] || pidof AdGuardHome >/dev/null 2>&1; then
+        if [ "$sdns_port" = 53 ] || [ "$sdns_port" = 5335 ] || [ "$snds_redirect" != 0 ]; then
+            logger -t SmartDNS "AdGuardHome 已启用；SmartDNS 需使用独立端口并关闭 DNS 重定向"
+            exit 1
+        fi
+    fi
+    ;;
+esac
 Read_ini
 Main

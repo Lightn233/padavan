@@ -1197,6 +1197,7 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 				document.getElementById('ssp_type').value = "xray";
 				document.getElementById('ssp_type').dispatchEvent(event);
 				document.getElementById('v2_security').value = queryParam.encryption || "none";
+				if (queryParam.flow === 'xtls-rprx-vision') document.getElementById('v2_flow').value = '3';
 				document.getElementById('v2_transport').value = queryParam.type || "tcp";
 				document.getElementById('v2_transport').dispatchEvent(event);
 				
@@ -1221,6 +1222,7 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 					document.getElementById('v2_h2_path').value = queryParam.path;
 				}
 				
+				if (queryParam.flow === 'xtls-rprx-vision') document.getElementById('v2_flow').value = '3';
 				if (queryParam.security == "xtls") {
 					document.getElementById('v2_tls').value = '2';
 					if (queryParam.flow != undefined) {
@@ -1313,7 +1315,25 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 				nodeData.appendChild(tr);
 			}
 		}
+		// 服务端协议必须同步迁移，不能把旧协议静默改成另一种。
+		function xrayCompatibilityError(type, transport, tls, flow, mux, insecure) {
+			if (type !== "xray") return "";
+			if (tls === "1" && insecure)
+				return "新版 Xray 已移除跳过证书验证，请先为服务端配置有效证书；原节点不会被删除。";
+			if (tls === "2" || flow === "1" || flow === "2")
+				return "新版 Xray 不再支持旧 XTLS/direct/splice，请先与服务端一起迁移；原节点不会被删除。";
+			if (transport === "h2" || transport === "quic")
+				return "新版 Xray 已移除旧 HTTP/2、QUIC 传输，请先迁移服务端；原节点不会被删除。";
+			if (flow === "3" && (tls !== "1" || transport !== "tcp" || mux === "1"))
+				return "Vision 需要 TCP、TLS，且不能同时启用旧 Mux。";
+			return "";
+		}
 		function add_ss() {
+			var compatibility = xrayCompatibilityError(document.getElementById("ssp_type").value,
+				document.getElementById("v2_transport").value, document.getElementById("v2_tls").value,
+				document.getElementById("v2_flow").value, document.getElementById("v2_mux").value,
+				document.getElementById("ssp_insecure").checked);
+			if (compatibility) { alert(compatibility); return false; }
 			showhide_div('vpnc_settings', 0);
 			var type = document.getElementById("ssp_type").value;
 			if (type == "ss") {
@@ -1350,7 +1370,7 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 					alias: document.getElementById("ssp_name").value,
 					server: document.getElementById("ssp_server").value,
 					server_port: document.getElementById("ssp_prot").value,
-					insecure: document.getElementById("ssp_insecure").value,
+					insecure: document.getElementById("ssp_insecure").checked ? "1" : "0",
 					mux: document.getElementById("v2_mux").value,
 					security: document.getElementById("v2_security").value,
 					vmess_id: document.getElementById("v2_vmess_id").value,
@@ -1392,7 +1412,7 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 					server: document.getElementById("ssp_server").value,
 					server_port: document.getElementById("ssp_prot").value,
 					password: document.getElementById("ss_password").value,
-					insecure: document.getElementById("ssp_insecure").value,
+					insecure: document.getElementById("ssp_insecure").checked ? "1" : "0",
 					tls: document.getElementById("v2_tls").value,
 					tls_host: document.getElementById("ssp_tls_host").value,
 					coustom: "1",
@@ -2354,8 +2374,9 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 															<td>
 																<select name="v2_flow" id="v2_flow" class="input" style="width: 200px;">
 																	<option value="0">未配置</option>
-																	<option value="1">xtls-rprx-direct</option>
-																	<option value="2">xtls-rprx-splice</option>
+																	<option value="1">xtls-rprx-direct（旧节点）</option>
+																	<option value="2">xtls-rprx-splice（旧节点）</option>
+														<option value="3">xtls-rprx-vision（TLS）</option>
 																</select>
 
 															</td>

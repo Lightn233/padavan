@@ -352,7 +352,7 @@ start_dns_dhcpd(int is_ap_mode)
 	} else {
 		is_dns_used = 0;
 		fprintf(fp, "cache-size=%d\n", 0);
-		fprintf(fp, "port=%d\n", 0);
+		fprintf(fp, "http_port=%d\n", 0);
 	}
 
 	if (strlen(domain) > 0) {
@@ -563,7 +563,7 @@ write_smb_conf_header(void)
 	if (!(fp = fopen(SAMBA_CONF, "w")))
 		return NULL;
 
-	p_res_order = "lmhosts hosts bcast";
+	p_res_order = "lmhosts host bcast";
 
 	fprintf(fp, "[global]\n");
 	if (strlen(p_workgroup) > 0)
@@ -590,7 +590,7 @@ write_smb_conf_header(void)
 			char *wins = nvram_safe_get("dhcp_wins_x");
 			if (is_valid_ipv4(wins)) {
 				fprintf(fp, "wins server = %s\n", wins);
-				p_res_order = "lmhosts wins hosts bcast";
+				p_res_order = "lmhosts wins host bcast";
 			}
 		}
 	}
@@ -601,20 +601,17 @@ write_smb_conf_header(void)
 	fprintf(fp, "max log size = 5\n");
 	fprintf(fp, "socket options = TCP_NODELAY SO_KEEPALIVE\n");
 	fprintf(fp, "unix charset = UTF8\n");
-	fprintf(fp, "display charset = UTF8\n");
 	fprintf(fp, "bind interfaces only = %s\n", "yes");
-	fprintf(fp, "interfaces = %s\n", IFNAME_BR);
-	fprintf(fp, "unix extensions = no\n");			// fix for MAC users (thanks to 'mark2qualis')
-	fprintf(fp, "encrypt passwords = yes\n");
-	fprintf(fp, "pam password change = no\n");
-	fprintf(fp, "obey pam restrictions = no\n");
+	/* WINS 自注册需要回环地址，监听范围仍限定在 LAN 与本机。 */
+	fprintf(fp, "interfaces = %s lo\n", IFNAME_BR);
 	fprintf(fp, "host msdfs = no\n");
 	fprintf(fp, "disable spoolss = yes\n");
 #if defined (APP_SMBD36)
-	fprintf(fp, "max protocol = SMB2\n");
+	/* 保持 SMB2 兼容，并允许新版客户端协商 SMB3。 */
+	fprintf(fp, "server min protocol = SMB2_02\n");
+	fprintf(fp, "server max protocol = SMB3\n");
 	fprintf(fp, "passdb backend = smbpasswd\n");
 	fprintf(fp, "security = USER\n");
-	fprintf(fp, "username level = 8\n");
 #endif
 	return fp;
 }
@@ -634,7 +631,8 @@ start_wins(void)
 	if (nvram_match("wins_enable", "0"))
 		return;
 
-	mkdir_if_none("/etc/samba", "777");
+	mkdir_if_none("/etc/samba", "700");
+	chmod("/etc/samba", 0700);
 
 	fp = write_smb_conf_header();
 	if (fp)
@@ -739,10 +737,11 @@ start_upnp(void)
 	fprintf(fp, "# automatically generated\n");
 	fprintf(fp,
 		"ext_ifname=%s\n"
+		"ext_allow_private_ipv4=yes\n"
 		"listening_ip=%s\n"
-		"port=%d\n"
+		"http_port=%d\n"
 		"enable_upnp=%s\n"
-		"enable_natpmp=%s\n"
+		"enable_pcp_pmp=%s\n"
 		"upnp_forward_chain=%s\n"
 		"upnp_nat_chain=%s\n"
 		"upnp_nat_postrouting_chain=%s\n"
@@ -861,6 +860,9 @@ ddns_updated_main(int argc, char *argv[])
 void
 stop_ddns(void)
 {
+#if defined(APP_DDNS_GO)
+	eval("/usr/bin/ddns-go.sh", "stop");
+#endif
 	char* svcs[] = { "inadyn", NULL };
 
 	kill_services(svcs, 3, 1);
@@ -1104,6 +1106,10 @@ start_ddns(int clear_cache)
 	if (!nvram_match("ddns_enable_x", "1"))
 		return -1;
 
+#if defined(APP_DDNS_GO)
+	if (nvram_match("ddns_engine", "ddns-go"))
+		return eval("/usr/bin/ddns-go.sh", "start");
+#endif
 	if (clear_cache)
 		doSystem("rm -rf %s", DDNS_CACHE_DIR);
 
@@ -1126,6 +1132,9 @@ start_ddns(int clear_cache)
 int
 notify_ddns_update(void)
 {
+#if defined(APP_DDNS_GO)
+	if (nvram_match("ddns_engine", "ddns-go")) return start_ddns(0);
+#endif
 	if (pids("inadyn")) {
 		write_inadyn_conf(DDNS_CONF_FILE);
 		return doSystem("killall %s %s", "-SIGHUP", "inadyn");
@@ -1143,6 +1152,10 @@ get_ddns_fqdn(void)
 	if (!nvram_match("ddns_enable_x", "1"))
 		return NULL;
 
+#if defined(APP_DDNS_GO)
+	/* 新后端使用独立配置，不能把旧服务商域名冒充为当前域名。 */
+	if (nvram_match("ddns_engine", "ddns-go")) return NULL;
+#endif
 	ddns_svc = get_inadyn_system(nvram_safe_get("ddns_server_x"));
 	if (ddns_svc && strncmp(ddns_svc, "ipv6tb@", 7) != 0 && !strstr(ddns_svc, "tunnelbroker.net")) {
 		ddns_fqdn = nvram_safe_get("ddns_hostname_x");

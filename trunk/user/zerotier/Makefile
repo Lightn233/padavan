@@ -1,32 +1,30 @@
-SRC_NAME = ZeroTierOne-1.10.6
-SRC_URL = https://github.com/zerotier/ZeroTierOne/archive/refs/tags/1.10.6.tar.gz
+include $(ROOTDIR)/rules.mk
 
-THISDIR = $(shell pwd)
-FLAGS := DEFS=""
-LDFLAGS := -static-libstdc++
+PKG_NAME:=zerotier
+PKG_VERSION:=1.16.2
+PKG_SOURCE:=zerotier-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://codeload.github.com/zerotier/ZeroTierOne/tar.gz
+PKG_SOURCE_URL_FILE:=refs/tags/$(PKG_VERSION)
+PKG_HASH:=2c607f573c6e38815433af289d364a689a203b18b51125f06c4472014d0657f0
 
-all: download_test extract_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)
+include $(INCLUDE_DIR)/package.mk
 
-download_test:
-	( if [ ! -f $(SRC_NAME).tar.gz ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.gz $(SRC_URL); \
-	fi )
+define Build/Prepare
+	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
+	tar -xzf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 --exclude='*/ext/libpqxx-*/install/*' -C '$(PKG_BUILD_DIR)'
+	$(Build/Patch)
+endef
 
-extract_test:
-	 if [ ! -d $(SRC_NAME) ] ; then \
-		tar xf $(SRC_NAME).tar.gz ; \
-		patch -d $(SRC_NAME) -p1 -i ../0007-add-cerrno-header-for-str-errno.patch ; \
-		patch -d $(SRC_NAME) -p1 -i ../0008-fix-compilation-for-arm_cortex-a7-neon.patch; \
-	 fi ;
+# 仅构建上游 MPL 客户端与 Moon 功能；新版独立授权的控制器不纳入公共固件。
+MAKE_FLAGS += ZT_EMBEDDED=1 ZT_CONTROLLER=0 ZT_NONFREE=0 ZT_SSO_SUPPORTED=0
+EXTRA_CFLAGS += -ffunction-sections -fdata-sections
+EXTRA_LDFLAGS += -static-libstdc++ -static-libgcc -Wl,--gc-sections
+$(eval $(call BuildPackage,zerotier))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
 
-clean:
-	if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) distclean ; \
-	fi ; \
-
-romfs:
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/zerotier-one /usr/bin/zerotier-one
-	$(ROMFSINST) $(THISDIR)/zerotier.sh /usr/bin/zerotier.sh
+romfs: $(STAMP_BUILT)
+	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/zerotier-one $(ROMFSDIR)/usr/bin/zerotier-one
+	$(INSTALL_BIN) ./zerotier.sh $(ROMFSDIR)/usr/bin/zerotier.sh
 	ln -sf zerotier-one $(ROMFSDIR)/usr/bin/zerotier-cli
 	ln -sf zerotier-one $(ROMFSDIR)/usr/bin/zerotier-idtool

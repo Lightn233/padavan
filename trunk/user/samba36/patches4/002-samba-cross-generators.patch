@@ -1,0 +1,32 @@
+--- a/third_party/heimdal_build/et_compile_wrapper.sh
++++ b/third_party/heimdal_build/et_compile_wrapper.sh
+@@ -37,7 +37,12 @@
+ 	# files, which makes Heimdal's compile_et fail mysteriously when writing to them.
+ 	rm -f `basename "${FILE}" .et`.c
+ 	rm -f `basename "${FILE}" .et`.h
+-	"${CMD}" "${FILE}" >&2 || exit 1;
++	# 交叉编译生成的工具使用指定模拟器执行，不依赖宿主全局 binfmt。
++	if [ -n "${SAMBA_CROSS_RUN:-}" ]; then
++		"${SAMBA_CROSS_RUN}" "${CMD}" "${FILE}" >&2 || exit 1
++	else
++		"${CMD}" "${FILE}" >&2 || exit 1
++	fi
+ 	cd "${CURDIR}"
+ 	TMP="${SOURCE}.$$"
+ 	mv "${SOURCE}" "${TMP}" && {
+--- a/third_party/heimdal_build/asn1_compile_wrapper.sh
++++ b/third_party/heimdal_build/asn1_compile_wrapper.sh
+@@ -49,7 +49,12 @@
+ }
+ 
+ cd ${DESTDIR} && {
+-	${ABS_BUILDDIR}/${CMD} ${OPTIONS} ${FILE} ${NAME} >&2 || exit 1;
++	# 交叉执行仅作用于本次构建，不替换系统模拟器。
++	if [ -n "${SAMBA_CROSS_RUN:-}" ]; then
++		"${SAMBA_CROSS_RUN}" "${ABS_BUILDDIR}/${CMD}" ${OPTIONS} "${FILE}" "${NAME}" >&2 || exit 1
++	else
++		"${ABS_BUILDDIR}/${CMD}" ${OPTIONS} "${FILE}" "${NAME}" >&2 || exit 1
++	fi
+ 	cd ${CURDIR}
+ } || {
+ 	echo "${SELF}:cannot cd into '${BUILDDIR}'" >&2;

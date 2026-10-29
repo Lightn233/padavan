@@ -13,6 +13,10 @@ SVC_NAME="Transmission"
 SVC_PATH="/usr/bin/transmission-daemon"
 DIR_LINK="/mnt/transmission"
 
+# 同一服务的启停串行执行；守护进程不继承锁文件描述符。
+exec 9>/var/run/transmission-service.lock || exit 1
+flock -x 9 || exit 1
+
 func_start()
 {
 	# Make sure already running
@@ -27,7 +31,8 @@ func_start()
 		return 1
 	fi
 
-	export TR_CURL_SSL_NO_VERIFY=1
+	# 使用正常证书校验，不能对全部 HTTPS 下载和 Tracker 关闭认证。
+	unset TR_CURL_SSL_NO_VERIFY TR_CURL_PROXY_SSL_NO_VERIFY
 	
 	DIR_CFG="${DIR_LINK}/config"
 	DIR_DL1="`cd \"$DIR_LINK\"; dirname \"$(pwd -P)\"`/Downloads"
@@ -50,9 +55,17 @@ func_start()
 	if [ ! -f "$DIR_CFG/settings.json" ] ; then
 		tr_user=`nvram get http_username`
 		tr_pass=`nvram get http_passwd`
-		$SVC_PATH -w "$DIR_DL1" --incomplete-dir "$DIR_DL2" -c "$DIR_DL3" --no-incomplete-dir -y -L 90 -l 30 --no-utp -M -t -u "$tr_user" -v "$tr_pass" -P "$tr_pport" -p "$tr_rport" -x /var/run/transmission.pid -d 2>/tmp/settings.json
-		sed -i 's|"umask": 18,|"umask": 0,|g' /tmp/settings.json
-		mv /tmp/settings.json "$DIR_CFG/settings.json"
+		# 默认配置先在目标盘生成，再原子替换，失败时不留下半份配置。
+		umask 077
+		tr_tmp=$(mktemp "$DIR_CFG/.settings.json.XXXXXX") || return 1
+		$SVC_PATH -w "$DIR_DL1" --incomplete-dir "$DIR_DL2" -c "$DIR_DL3" --no-incomplete-dir -y -L 90 -l 30 --no-utp -M -t -u "$tr_user" -v "$tr_pass" -P "$tr_pport" -p "$tr_rport" -x /var/run/transmission.pid -d 2>"$tr_tmp" 9>&-
+		if [ $? -ne 0 ] || [ ! -s "$tr_tmp" ]; then
+			rm -f "$tr_tmp"
+			logger -t "$SVC_NAME" "生成默认配置失败，未启动服务"
+			return 1
+		fi
+		sed -i 's|"umask": 18,|"umask": 0,|g' "$tr_tmp"
+		mv "$tr_tmp" "$DIR_CFG/settings.json" || return 1
 	fi
 	
 	svc_user=""
@@ -66,7 +79,7 @@ func_start()
 		svc_user=" -c nobody"
 	fi
 	
-	start-stop-daemon -S -N $SVC_PRIORITY$svc_user -x $SVC_PATH -- -g "$DIR_CFG" -P "$tr_pport" -p "$tr_rport" -e "${DIR_LINK}/transmission.log"
+	start-stop-daemon -S -N $SVC_PRIORITY$svc_user -x $SVC_PATH -- -g "$DIR_CFG" -P "$tr_pport" -p "$tr_rport" -e "${DIR_LINK}/transmission.log" 9>&-
 	
 	if [ $? -eq 0 ] ; then
 		echo "[  OK  ]"
@@ -99,7 +112,7 @@ func_stop()
 	tr_pid=`pidof transmission-daemon`
 	if [ -n "$tr_pid" ] ; then
 		# force kill (hungup?)
-		kill -9 "$tr_pid"
+		killall -KILL transmission-daemon >/dev/null 2>&1
 		sleep 1
 		echo "[KILLED]"
 		logger -t "$SVC_NAME" "Cannot stop: Timeout reached! Force killed."

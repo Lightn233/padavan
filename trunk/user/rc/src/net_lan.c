@@ -330,8 +330,14 @@ config_bridge(int is_ap_mode)
 	br_set_param_int(IFNAME_BR, "multicast_router", multicast_router);
 	br_set_param_int(IFNAME_BR, "multicast_querier", multicast_querier);
 
-	/* allow use bridge IP address as IGMP/MLD query source IP (avoid cisco issue) */
+#if defined(BOARD_RM2100)
+	/* 本机严格来源检查会丢弃网桥自身地址发出的 IGMP 查询，导致本地成员老化。
+	 * 使用内核默认的零源地址；保持侦听、查询器及 IPv6 MLD 配置不变。 */
+	br_set_param_int(IFNAME_BR, "multicast_query_use_ifaddr", 0);
+#else
+	/* 其他机型保留原有查询源行为，避免未经实机验证改变其兼容性。 */
 	br_set_param_int(IFNAME_BR, "multicast_query_use_ifaddr", 1);
+#endif
 
 	br_set_param_int(IFNAME_BR, "multicast_snooping", (igmp_snoop) ? 1 : 0);
 

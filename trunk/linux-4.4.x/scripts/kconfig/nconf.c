@@ -502,8 +502,8 @@ static int get_mext_match(const char *match_str, match_f flag)
 	else if (flag == FIND_NEXT_MATCH_UP)
 		--match_start;
 
+	match_start = (match_start + items_num) % items_num;
 	index = match_start;
-	index = (index + items_num) % items_num;
 	while (true) {
 		char *str = k_menu_items[index].str;
 		if (strcasestr(str, match_str) != 0)
@@ -578,6 +578,8 @@ static void item_add_str(const char *fmt, ...)
 	strncpy(k_menu_items[index].str,
 		tmp_str,
 		sizeof(k_menu_items[index].str));
+
+	k_menu_items[index].str[sizeof(k_menu_items[index].str) - 1] = '\0';
 
 	free_item(curses_menu_items[index]);
 	curses_menu_items[index] = new_item(

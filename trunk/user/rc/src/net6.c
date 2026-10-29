@@ -187,87 +187,94 @@ void full_restart_ipv6(int ipv6_type_old)
 
 int ipv6_from_string(const char *str, struct in6_addr *addr6)
 {
-	char addr6s[INET6_ADDRSTRLEN] = "::/0";
-	char *last, *tmp = addr6s;
-	int ret = 128;
-
-	if (str && *str) {
-		memset(addr6s, 0, sizeof(addr6s));
-		strncpy(addr6s, str, sizeof(addr6s) - 1);
-	}
-
-	strsep(&tmp, "/");
-
-	if (inet_pton(AF_INET6, addr6s, addr6) != 1)
+	char text[INET6_ADDRSTRLEN + 5], *slash, *p;
+	unsigned int prefix = 0;
+	if (!str || !*str)
+		str = "::/0";
+	if (strlen(str) >= sizeof(text))
 		return -1;
-
-	if (tmp && *tmp) {
-		ret = strtol(tmp, &last, 10);
-		if (*last || ret < 0 || ret > 128)
-			ret = -1;
+	strcpy(text, str);
+	slash = strchr(text, '/');
+	if (slash) {
+		*slash++ = 0;
+		if (!*slash)
+			return -1;
+		for (p = slash; *p; p++) {
+			if (*p < '0' || *p > '9' || prefix > 128)
+				return -1;
+			prefix = prefix * 10 + (*p - '0');
+		}
+		if (prefix > 128)
+			return -1;
+	} else {
+		prefix = 128;
 	}
-
-	return ret;
+	if (inet_pton(AF_INET6, text, addr6) != 1)
+		return -1;
+	return prefix;
 }
 
 int ipv6_to_net(struct in6_addr *addr6, int prefix)
 {
-	int i = prefix >> 5;
-	int m = prefix & 0x1f;
-
-	if (prefix > 128)
+	int i, whole, bits;
+	if (prefix < 0 || prefix > 128)
 		return 0;
-
-	if (m)
-		addr6->s6_addr32[i++] &= htonl(0xffffffffUL << (32 - m));
-	while (i < 4)
-		addr6->s6_addr32[i++] = 0;
-
+	whole = prefix / 8;
+	bits = prefix % 8;
+	if (bits)
+		addr6->s6_addr[whole++] &= (unsigned char)(0xffU << (8 - bits));
+	for (i = whole; i < 16; i++)
+		addr6->s6_addr[i] = 0;
 	return prefix;
 }
 
 int ipv6_to_host(struct in6_addr *addr6, int prefix)
 {
-	int i = prefix >> 5;
-	int m = prefix & 0x1f;
-
-	if (prefix > 128)
+	int i, whole, bits;
+	if (prefix < 0 || prefix > 128)
 		return 0;
-
-	if (m)
-		addr6->s6_addr32[i--] &= htonl(0xffffffffUL >> m);
-	while (i >= 0)
-		addr6->s6_addr32[i--] = 0;
-
+	whole = prefix / 8;
+	bits = prefix % 8;
+	for (i = 0; i < whole; i++)
+		addr6->s6_addr[i] = 0;
+	if (bits)
+		addr6->s6_addr[whole] &= (unsigned char)(0xffU >> bits);
 	return 128 - prefix;
 }
 
 int ipv6_to_ipv4_map(struct in6_addr *addr6, int size6, struct in_addr *addr4, int size4)
 {
-	int i = size6 >> 5;
-	int m = size6 & 0x1f;
-	int ret = size6 + 32 - size4;
-	u_int32_t addr = 0;
-	u_int32_t mask = 0xffffffffUL << size4;
-
-	if (size6 > 128 || size4 > 32 || ret > 128)
+	unsigned int value = addr4 ? ntohl(addr4->s_addr) : 0;
+	int n, i, bit;
+	/* 先检查长度，再运算；按字节写入，避免移位 32 位和越过第 16 字节。 */
+	if (size6 < 0 || size6 > 128 || size4 < 0 || size4 > 32)
 		return 0;
-
-	if (size4 == 32)
-		return size6;
-
-	if (addr4)
-		addr = ntohl(addr4->s_addr) << size4;
-
-	addr6->s6_addr32[i] &= ~htonl(mask >> m);
-	addr6->s6_addr32[i] |= htonl(addr >> m);
-	if (m) {
-		i++;
-		addr6->s6_addr32[i] &= ~htonl(mask << (32 - m));
-		addr6->s6_addr32[i] |= htonl(addr << (32 - m));
+	n = 32 - size4;
+	if (n > 128 - size6)
+		return 0;
+	for (i = 0; i < n; i++) {
+		unsigned char mask;
+		bit = size6 + i;
+		mask = 1U << (7 - bit % 8);
+		addr6->s6_addr[bit / 8] &= (unsigned char)~mask;
+		if ((value >> (n - 1 - i)) & 1U)
+			addr6->s6_addr[bit / 8] |= mask;
 	}
+	return size6 + n;
+}
 
-	return ret;
+int ipv6_append_prefix(char *text, size_t capacity, int prefix)
+{
+	char suffix[5];
+	size_t used, extra;
+	if (prefix < 0 || prefix > 128)
+		return -1;
+	used = strnlen(text, capacity);
+	extra = snprintf(suffix, sizeof(suffix), "/%d", prefix);
+	if (used >= capacity || extra >= capacity - used)
+		return -1;
+	memcpy(text + used, suffix, extra + 1);
+	return 0;
 }
 
 int ipv6_compact(const char *str6, char *p_comp6, int allow_prefix)
@@ -282,7 +289,7 @@ int ipv6_compact(const char *str6, char *p_comp6, int allow_prefix)
 
 	inet_ntop(AF_INET6, &addr6, p_comp6, INET6_ADDRSTRLEN);
 	if (allow_prefix && prefix_len > 0 && prefix_len < 128)
-		sprintf(p_comp6, "%s/%d", p_comp6, prefix_len);
+		return ipv6_append_prefix(p_comp6, INET6_ADDRSTRLEN, prefix_len);
 
 	return 0;
 }

@@ -1,11 +1,11 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=socat
-PKG_VERSION:=1.7.4.4
+PKG_VERSION:=1.8.1.3
 
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
-PKG_SOURCE_URL:=http://www.dest-unreach.org/socat/download
-PKG_HASH:=fbd42bd2f0e54a3af6d01bdf15385384ab82dbc0e4f1a5e153b3e0be1b6380ac
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://distfiles.alpinelinux.org/distfiles/edge http://www.dest-unreach.org/socat/download
+PKG_HASH:=06602ffd591e98c75b3dc1d66f0f19136cc666b0b2d95caad987d6ab2cb28097
 
 include $(INCLUDE_DIR)/package.mk
 

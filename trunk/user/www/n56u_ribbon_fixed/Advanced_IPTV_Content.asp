@@ -31,6 +31,7 @@ $j(document).ready(function() {
 </script>
 <script>
 
+<% optional_service_support(); %>
 var lan_ipaddr = '<% nvram_get_x("", "lan_ipaddr_t"); %>';
 
 function initial(){
@@ -90,6 +91,9 @@ function initial(){
 		showhide_div('row_xupnpd', 0);
 	}
 
+	if (!support_udpxy()) $j('select[name=iptv_proxy] option[value=udpxy]').remove();
+	if (!support_msd_lite()) $j('select[name=iptv_proxy] option[value=msd_lite]').remove();
+	if (!support_rtp2httpd()) $j('select[name=iptv_proxy] option[value=rtp2httpd]').remove();
 	on_click_snoop();
 }
 
@@ -185,7 +189,7 @@ var window_xupnpd;
 var window_params="toolbar=yes,location=yes,directories=no,status=yes,menubar=yes,scrollbars=yes,resizable=yes,copyhistory=no,width=800,height=600";
 
 function on_udpxy_link(){
-    var path = ("<% nvram_get_x("","msd_lite_enable"); %>" === "1") ? "/stat" : "/status";
+    var path = (document.form.iptv_proxy.value === "msd_lite") ? "/stat" : "/status";
 	var svc_url="http://" + lan_ipaddr + ":" + document.form.udpxy_enable_x.value + path;
 	window_udpxy = window.open(svc_url, "udpxy", window_params);
 	window_udpxy.focus();
@@ -293,6 +297,12 @@ function on_xupnpd_link(){
                                     <table width="100%" align="center" cellpadding="4" cellspacing="0" class="table">
                                         <tr>
                                             <th colspan="3" style="background-color: #E3E3E3;"><#IPTVProxy#></th>
+</tr><tr><th>组播转 HTTP 程序</th><td colspan="2">
+<select name="iptv_proxy">
+<option value="udpxy" <% nvram_match_x("", "iptv_proxy", "udpxy", "selected"); %>>udpxy（原程序）</option>
+<option value="msd_lite" <% nvram_match_x("", "iptv_proxy", "msd_lite", "selected"); %>>msd_lite 1.11.0</option>
+<option value="rtp2httpd" <% nvram_match_x("", "iptv_proxy", "rtp2httpd", "selected"); %>>rtp2httpd 3.17.2</option>
+</select><p>沿用下方端口；端口为 0 时关闭，不改运营商 VLAN 和组播路由设置。</p></td>
                                         </tr>
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,6, 6);"><#RouterConfig_IPTV_itemname#>:</a></th>

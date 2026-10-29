@@ -25,44 +25,28 @@ stop_statefile() {
 
 runmode_1(){
 export IFACE="eth2"
-nvram set hw_nat_mode=0
-nvram commit
-rmmod hw_nat
 }
 
 runmode_2(){
 export IFACE="br0"
-nvram set hw_nat_mode=2
-nvram commit
-rmmod hw_nat
-vlanenable="$(nvram get vlan_filter )"
-if [ "$vlanenable" -ne 0 ]; then
-vlanid="$(nvram get vlan_vid_cpu )"
-modprobe -q hw_nat wan_vid="$vlanid"
-else
-modprobe hw_nat
-fi 
-iwpriv ra0 set hw_nat_register=0
-iwpriv rai0 set hw_nat_register=0
-iwpriv rax0 set hw_nat_register=0
 }
 
 runmode_3(){
 export IFACE="br0"
-nvram set hw_nat_mode=0
-nvram commit
-rmmod hw_nat
 }
 
 runmode_4(){
 export IFACE=$(nvram get sqm_active)
-nvram set hw_nat_mode=2
-nvram commit
-rmmod hw_nat
-modprobe hw_nat
-iwpriv ra0 set hw_nat_register=0
-iwpriv rai0 set hw_nat_register=0
-iwpriv rax0 set hw_nat_register=0
+}
+
+release_acceleration() {
+    # 仍有其他接口启用 SQM 时，继续禁止加速。
+    local f
+    for f in "${SQM_STATE_DIR}"/*.state; do
+        [ -f "$f" ] && return 0
+    done
+    rm -f "${SQM_STATE_DIR}/accel-block"
+    /sbin/rc sync_acceleration
 }
 
 
@@ -70,8 +54,16 @@ start_sqm_section() {
     runmode="$(nvram get sqm_flag)"
     local section="sqm_"
 
+    # 先确定接口，再检查状态，避免使用空接口名或重复启动。
+    case "$runmode" in
+        1) runmode_1 ;;
+        2) runmode_2 ;;
+        3) runmode_3 ;;
+        *) runmode_4 ;;
+    esac
+    [ -n "$IFACE" ] && [ -d "/sys/class/net/$IFACE" ] || return 1
     [ -z "$RUN_IFACE" -o "$RUN_IFACE" = "$IFACE" ] || return
-    [ "$(nvram get sqm_enable)" -eq 1 ] || return 0
+    [ "$(nvram get sqm_enable)" = "1" ] || return 0
     [ -f "${SQM_STATE_DIR}/${IFACE}.state" ] && return
 
     export DOWNLINK=$(nvram get sqm_up_speed)
@@ -109,17 +101,22 @@ start_sqm_section() {
     export SQM_VERBOSITY_MAX=${SQM_VERBOSITY_MAX:-$(nvram get sqm_log_level)}
     export SQM_VERBOSITY_MIN
     
-if [ "$runmode" = "1" ]; then
-	runmode_1
-elif [ "$runmode" = "2" ]; then
-	runmode_2
-elif [ "$runmode" = "3" ]; then
-	runmode_3
-else   
-	runmode_4
-fi
-
+    # 硬件 NAT 会绕过软件队列；不允许限速与卸载路径同时生效。
+    mkdir -p "${SQM_STATE_DIR}" || return 1
+    : > "${SQM_STATE_DIR}/accel-block" || return 1
+    /sbin/rc sync_acceleration || { release_acceleration; return 1; }
+    if grep -qE '^(hw_nat|fast_classifier|shortcut_fe_cm) ' /proc/modules; then
+        logger -t SQM "加速模块仍在运行，取消启动限速以免规则被绕过"
+        release_acceleration
+        return 1
+    fi
     "${SQM_LIB_DIR}/start-sqm"
+    local status=$?
+    # 部分上游脚本失败时也返回零，以实际状态文件作为启动完成的依据。
+    if [ "$status" -ne 0 ] || [ ! -f "${SQM_STATE_DIR}/${IFACE}.state" ]; then
+        release_acceleration
+        return 1
+    fi
 }
 
 if [ "$ACTION" = "stop" ]; then
@@ -131,6 +128,7 @@ if [ "$ACTION" = "stop" ]; then
     else
         stop_statefile "${SQM_STATE_DIR}/${RUN_IFACE}.state"
     fi
+    release_acceleration
 else
     start_sqm_section
 fi

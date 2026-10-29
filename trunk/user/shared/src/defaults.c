@@ -887,6 +887,8 @@ struct nvram_pair router_defaults[] = {
 
 	/* DDNS parameters */
 	{ "ddns_enable_x", "0" },
+	{ "ddns_engine", "inadyn" },
+	{ "ddns_go_port", "9876" },
 	{ "ddns_server_x", "" },
 	{ "ddns_username_x", "" },
 	{ "ddns_passwd_x", "" },
@@ -934,6 +936,11 @@ struct nvram_pair router_defaults[] = {
 	{ "force_igmp", "0" },
 	{ "force_mld", "0" },
 	{ "udpxy_enable_x", "0" },
+#if defined(APP_MSD_LITE) && !defined(APP_RTP2HTTPD)
+	{ "iptv_proxy", "msd_lite" },
+#else
+	{ "iptv_proxy", "udpxy" },
+#endif
 	{ "udpxy_clients", "10" },
 	{ "udpxy_renew_period", "120" },
 #if defined(APP_XUPNPD)

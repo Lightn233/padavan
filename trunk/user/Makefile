@@ -123,8 +123,13 @@ dir_y						+= inadyn
 dir_y						+= miniupnpd
 dir_y						+= dnsmasq
 dir_y						+= igmpproxy
+# 仅在需要兼容旧后端或同时提供新后端时包含 udpxy。
 ifneq ($(CONFIG_FIRMWARE_INCLUDE_MSD_LITE),y)
 dir_y						+= udpxy
+else
+ifeq ($(CONFIG_FIRMWARE_INCLUDE_RTP2HTTPD),y)
+dir_y						+= udpxy
+endif
 endif
 dir_y						+= utils
 dir_y						+= lanauth
@@ -245,6 +250,10 @@ endif
 dir_y						+= mtd-utils
 endif
 
+# 可选组件必须在目标依赖展开前加入列表。
+dir_$(CONFIG_FIRMWARE_INCLUDE_RTP2HTTPD) += rtp2httpd
+dir_$(CONFIG_FIRMWARE_INCLUDE_DDNS_GO) += ddns-go
+
 all: $(patsubst %,%_only,$(dir_y))
 
 romfs: $(patsubst %,%_romfs,$(dir_y))
@@ -262,4 +271,7 @@ clean: $(patsubst %,%_clean,$(dir_y) $(dir_n) $(dir_))
 %_clean:
 	@echo "\033[37;42m CLEAN \033[0m\033[37;44m   $(@:_clean=)   \033[0m"
 	$(MAKE) -C $(@:_clean=) clean || true
+
+
+# 可选 IPTV 后端；默认机型配置不因此改变。
 

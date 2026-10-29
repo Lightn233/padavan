@@ -22,10 +22,10 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
+#include <netinet/ether.h>
 #include "include/ebtables_u.h"
 #include "include/ethernetdb.h"
 #include <stdio.h>
-// #include <netinet/ether.h>
 #include <string.h>
 #include <stdlib.h>
 #include <getopt.h>

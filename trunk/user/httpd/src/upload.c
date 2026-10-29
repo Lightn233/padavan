@@ -21,6 +21,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdint.h>
+#include <limits.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -42,6 +43,7 @@
 #define PROFILE_HEADER		"HDR1"
 #define PROFILE_HEADER_NEW	"HDR2"
 #define UPLOAD_BUF_SIZE		1024
+#define UPLOAD_TAIL_SIZE	128
 
 typedef int (*check_header_t)(const char *, long *);
 
@@ -62,15 +64,17 @@ check_header_bz2(const char *buf, long *file_len)
 static int
 check_header_nvram(const char *buf, long *file_len)
 {
-	unsigned int *p_len = (unsigned int *)(buf + 4);
+	uint32_t raw_len;
+	memcpy(&raw_len, buf + 4, sizeof(raw_len));
 
 	if (strncmp(buf, PROFILE_HEADER_NEW, 4) == 0) {
-		*file_len = (long)(*p_len & 0xffffff);
+		*file_len = (long)(raw_len & 0xffffffU);
 		return 0;
 	}
 
 	if (strncmp(buf, PROFILE_HEADER, 4) == 0) {
-		*file_len = (long)(*p_len);
+		if (raw_len > LONG_MAX) return -1;
+		*file_len = (long)raw_len;
 		return 0;
 	}
 
@@ -83,6 +87,8 @@ static int
 check_header_image(const char *buf, long *file_len)
 {
 	int pid_asus_len;
+	uint32_t payload_size;
+	unsigned int partition_size;
 	char pid_asus[16];
 	image_header_t *hdr = (image_header_t *)buf;
 
@@ -104,7 +110,14 @@ check_header_image(const char *buf, long *file_len)
 		return -2;
 	}
 
-	*file_len = (long)(ntohl(hdr->ih_size) + sizeof(image_header_t));
+	/* 先检查减法形式的上限，再相加；32 位 long 不能接收溢出的镜像长度。 */
+    payload_size = ntohl(hdr->ih_size);
+    partition_size = get_mtd_size(FW_MTD_NAME);
+    if (partition_size < sizeof(image_header_t) ||
+        payload_size > partition_size - sizeof(image_header_t) ||
+        payload_size > (unsigned long)LONG_MAX - sizeof(image_header_t))
+        return -1;
+    *file_len = (long)payload_size + (long)sizeof(image_header_t);
 
 	return 0;
 }
@@ -135,8 +148,8 @@ check_crc_image(const char *fw_image)
 		goto checkcrc_fail;
 	}
 
-	if ((unsigned int)sbuf.st_size < (sizeof(image_header_t) + (2 * 1024 * 1024)) || 
-	    (unsigned int)sbuf.st_size > get_mtd_size(FW_MTD_NAME)) {
+	if (sbuf.st_size < (off_t)(sizeof(image_header_t) + (2 * 1024 * 1024)) ||
+	    (uint64_t)sbuf.st_size > get_mtd_size(FW_MTD_NAME)) {
 		ret = -1;
 		httpd_log("%s: Firmware image size is invalid!", "Firmware update");
 		goto checkcrc_fail;
@@ -189,129 +202,98 @@ checkcrc_fail:
 	return ret;
 }
 
+/* 逐字节核减请求剩余量；头部过长、嵌入零字节或提前结束都拒绝。 */
+static int
+read_upload_line(FILE *stream, int *remaining, char *line, size_t capacity)
+{
+    size_t used = 0;
+    while (*remaining > 0 && used + 1 < capacity) {
+        int c = fgetc(stream);
+        if (c == EOF || c == 0) return -1;
+        (*remaining)--;
+        line[used++] = (char)c;
+        if (c == '\n') { line[used] = 0; return (int)used; }
+    }
+    return -1;
+}
+
 static int
 do_upload_file(FILE *stream, int clen, char *bndr, const char *fn, const char *obj_name, check_header_t func_hdr, int hdr_size)
 {
-	FILE *fp = NULL;
-	char buf[64+UPLOAD_BUF_SIZE+1], buf_obj[32], *ptr;
-	int cnt, count, offset, ret, ch, valid_header;
-	long filelen;
+    FILE *fp = NULL;
+    char buf[UPLOAD_TAIL_SIZE + UPLOAD_BUF_SIZE + 1], buf_obj[32], *ptr;
+    int count, offset = 0, ret = -1, valid_header = 0, found_part = 0;
+    int found_blank = 0, found_boundary = 0;
+    long filelen;
+    size_t tail_length = 0;
 
-	ret = EINVAL;
-	valid_header = 0;
-	snprintf(buf_obj, sizeof(buf_obj), "name=\"%s\"", obj_name);
+    snprintf(buf_obj, sizeof(buf_obj), "name=\"%s\"", obj_name);
+    if (clen <= 0 || hdr_size <= 0 || hdr_size > UPLOAD_BUF_SIZE) goto out;
+    while (clen > 0) {
+        if (read_upload_line(stream, &clen, buf, sizeof(buf)) < 0) goto out;
+        if (!strncasecmp(buf, "Content-Disposition:", 20) && strstr(buf, buf_obj)) {
+            found_part = 1; break;
+        }
+    }
+    if (!found_part) goto out;
+    while (clen > 0) {
+        if (read_upload_line(stream, &clen, buf, sizeof(buf)) < 0) goto out;
+        if (!strcmp(buf, "\n") || !strcmp(buf, "\r\n")) { found_blank = 1; break; }
+    }
+    if (!found_blank || clen < hdr_size) goto out;
+    unlink(fn);
+    fp = fopen(fn, "w+");
+    if (!fp) goto out;
+    filelen = clen;
+    ptr = buf + UPLOAD_TAIL_SIZE;
 
-	/* Look for our part */
-	while (clen > 0) {
-		if (!fgets(buf, MIN(clen + 1, sizeof(buf)), stream))
-			goto err;
-		clen -= strlen(buf);
-		if (!strncasecmp(buf, "Content-Disposition:", 20) && strstr(buf, buf_obj))
-			break;
-	}
-
-	/* Skip boundary and headers */
-	while (clen > 0) {
-		if (!fgets(buf, MIN(clen + 1, sizeof(buf)), stream))
-			goto err;
-		clen -= strlen(buf);
-		if (!strcmp(buf, "\n") || !strcmp(buf, "\r\n"))
-			break;
-	}
-
-	unlink(fn);
-	if (!(fp = fopen(fn, "w+")))
-		goto err;
-
-	filelen = clen;
-	offset = 0;
-	cnt = 0;
-	ptr = buf + 64;
-	memset(buf, 0, 64);
-
-	/* Pipe the rest to the FIFO */
-	while (clen > 0 && filelen > 0) {
-		count = fread(ptr + offset, 1, MIN(clen, UPLOAD_BUF_SIZE-offset), stream);
-		if (count <= 0)
-			goto err;
-		
-		clen -= count;
-		
-		if (cnt == 0) {
-			if (count + offset < hdr_size) {
-				offset += count;
-				continue;
-			}
-			
-			count += offset;
-			offset = 0;
-			cnt++;
-			
-			if (func_hdr(ptr, &filelen) != 0)
-				goto err;
-			
-			valid_header = 1;
-		}
-		
-		/* check boundary marker (after \r\n or \n) */
-		if (bndr) {
-			char *pb = memmem(buf, 64 + count, bndr, strlen(bndr));
-			if (!pb)
-				pb = memmem(buf, 64 + count, bndr+1, strlen(bndr+1));
-			if (pb) {
-				if (pb > ptr) {
-					count = (int)(pb - ptr);
-					filelen = count;
-				} else {
-					/* part of boundary marker may be writed to file, ignore this */
-					filelen = 0;
-					break;
-				}
-			}
-		}
-		
-		if (count > filelen)
-			count = filelen;
-		
-		filelen -= count;
-		fwrite(ptr, 1, count, fp);
-		
-		if (bndr && count >= 64)
-			memcpy(buf, ptr + count - 64, 64);
-	}
-
-	if (!valid_header)
-		goto err;
-
-	/* Slurp anything remaining in the request */
-	while (clen-- > 0) {
-		if((ch = fgetc(stream)) == EOF)
-			break;
-		
-		if (filelen > 0) {
-			fwrite(&ch, 1, 1, fp);
-			filelen--;
-		}
-	}
-
-	ret = 0;
-
-err:
-	if (fp)
-		fclose(fp);
-
-	/* Slurp anything remaining in the request */
-	while (clen-- > 0) {
-		if((ch = fgetc(stream)) == EOF)
-			break;
-	}
-
-	if (ret != 0 || !valid_header) {
-		unlink(fn);
-		return -1;
-	}
-
-	return 0;
+    while (clen > 0 && filelen > 0) {
+        count = (int)fread(ptr + offset, 1, MIN(clen, UPLOAD_BUF_SIZE - offset), stream);
+        if (count <= 0) goto out;
+        clen -= count;
+        if (!valid_header) {
+            if (count + offset < hdr_size) { offset += count; continue; }
+            count += offset; offset = 0;
+            if (func_hdr(ptr, &filelen) != 0 || filelen < hdr_size ||
+                filelen > (long)count + clen) goto out;
+            valid_header = 1;
+        }
+        if (bndr) {
+            char *pb = memmem(ptr - tail_length, tail_length + count, bndr, strlen(bndr));
+            if (!pb) pb = memmem(ptr - tail_length, tail_length + count, bndr + 1, strlen(bndr + 1));
+            if (pb) {
+                found_boundary = 1;
+                if (pb < ptr) {
+                    /* 边界跨越两次读取：截去此前暂存到文件尾部的边界字节。 */
+                    off_t end;
+                    if (fflush(fp) || (end = ftello(fp)) < (off_t)(ptr - pb) ||
+                        ftruncate(fileno(fp), end - (ptr - pb))) goto out;
+                    filelen = 0; break;
+                }
+                count = (int)(pb - ptr); filelen = count;
+            }
+        }
+        if ((long)count > filelen) count = (int)filelen;
+        if (count < 0 || count > UPLOAD_BUF_SIZE) goto out;
+        if (fwrite(ptr, 1, (size_t)count, fp) != (size_t)count) goto out;
+        filelen -= count;
+        if (bndr) {
+            tail_length = MIN((size_t)count, (size_t)UPLOAD_TAIL_SIZE);
+            memcpy(ptr - tail_length, ptr + count - tail_length, tail_length);
+        }
+    }
+    if (!valid_header || filelen != 0 || (bndr && !found_boundary) || ferror(stream)) goto out;
+    ret = 0;
+out:
+    /* 成功后读完已声明的 multipart 尾部，避免未读请求触发连接复位。 */
+    while (ret == 0 && clen > 0) {
+        count = (int)fread(buf, 1, MIN(clen, (int)sizeof(buf)), stream);
+        if (count <= 0) { ret = -1; break; }
+        clen -= count;
+    }
+    if (fp && fclose(fp)) ret = -1;
+    if (ret) unlink(fn);
+    return ret;
 }
 
 void
@@ -338,6 +320,7 @@ do_upgrade_fw_post(const char *url, FILE *stream, int clen, char *boundary)
 		if (ret != 0)
 			unlink(upload_file);
 	}
+	if (ret != 0) http_input_error = 400;
 }
 
 void
@@ -345,7 +328,8 @@ do_restore_nv_post(const char *url, FILE *stream, int clen, char *boundary)
 {
 	const char *upload_file = PROFILE_FIFO_UPLOAD;
 
-	do_upload_file(stream, clen, NULL, upload_file, "file_nv", check_header_nvram, 8);
+	if (do_upload_file(stream, clen, NULL, upload_file, "file_nv", check_header_nvram, 8))
+		http_input_error = 400;
 }
 
 void
@@ -355,6 +339,11 @@ do_restore_st_post(const char *url, FILE *stream, int clen, char *boundary)
 	char bndr[128];
 
 	/* BZ2 not store file length in the header, check boundary marker */
-	snprintf(bndr, sizeof(bndr), "\r\n--%s", boundary);
-	do_upload_file(stream, clen, bndr, upload_file, "file_st", check_header_bz2, 10);
+	if (!boundary || !*boundary || strlen(boundary) > 70 ||
+        strpbrk(boundary, "\r\n")) {
+        unlink(upload_file); http_input_error = 400; return;
+    }
+    snprintf(bndr, sizeof(bndr), "\r\n--%s", boundary);
+    if (do_upload_file(stream, clen, bndr, upload_file, "file_st", check_header_bz2, 10))
+        http_input_error = 400;
 }

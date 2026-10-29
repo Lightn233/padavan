@@ -34,12 +34,15 @@ include $(INCLUDE_DIR)/download.mk
 include $(INCLUDE_DIR)/unpack.mk
 include $(INCLUDE_DIR)/autotools.mk
 
+# 补丁按文件名顺序应用；任意一个失败即停止，禁止生成成功标记。
 define PatchDir
-	@if [ -d "$(2)" ] && [ "$$$$(ls $(2) | wc -l)" -gt 0 ]; then \
-		for p in $(2)/*.patch; do \
+	@set -e; \
+	if [ -d "$(2)" ]; then \
+		for p in "$(2)"/*.patch; do \
+			[ -f "$$$$p" ] || continue; \
 			echo "Applying $$$$p ..."; \
-			$(PATCH) -d $(1) -p1 < $$$$p; \
-		done \
+			$(PATCH) -d "$(1)" -p1 < "$$$$p"; \
+		done; \
 	fi
 endef
 

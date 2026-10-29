@@ -40,10 +40,12 @@
 #endif
 
 #include "rc.h"
+#include "shutdown_guard.h"
 #include "gpio_pins.h"
 #include "switch.h"
 #include <ralink_priv.h>
 #include <gpioutils.h>
+#include <flash_mtd.h>
 
 extern struct nvram_pair router_defaults[];
 
@@ -355,7 +357,7 @@ nvram_convert_misc_values(void)
 		nvram_wlan_set(1, "ssid", DEF_WLAN_5G_SSID);
 
 	memset(buff, 0, sizeof(buff));
-	char_to_ascii(buff, nvram_wlan_get(1, "ssid"));
+	char_to_ascii(buff, sizeof(buff), nvram_wlan_get(1, "ssid"));
 	nvram_wlan_set(1, "ssid2", buff);
 
 	if (strlen(nvram_wlan_get(1, "wpa_mode")) < 1)
@@ -386,7 +388,7 @@ nvram_convert_misc_values(void)
 		nvram_wlan_set(0, "ssid", DEF_WLAN_2G_SSID);
 
 	memset(buff, 0, sizeof(buff));
-	char_to_ascii(buff, nvram_wlan_get(0, "ssid"));
+	char_to_ascii(buff, sizeof(buff), nvram_wlan_get(0, "ssid"));
 	nvram_wlan_set(0, "ssid2", buff);
 
 	if (strlen(nvram_wlan_get(0, "gmode")) < 1)
@@ -551,7 +553,7 @@ storage_save_time(time_t delta)
 	if (now_tm.tm_year > (SYS_START_YEAR - 1900)) {
 		fp = fopen("/etc/storage/system_time", "w");
 		if (fp) {
-			fprintf(fp, "%lu", (now_time + delta));
+			fprintf(fp, "%lld", (long long)(now_time + delta));
 			fclose(fp);
 		}
 	}
@@ -835,6 +837,10 @@ shutdown_router(int level)
 
 	storage_save_time(10);
 	write_storage_to_mtd();
+
+	/* 已完成配置保存，普通重启才启动兜底；刷机清理和关机不参与。 */
+	if (level == 0 && start_shutdown_guard(level, 45) < 0)
+		logmessage("RM2100", "无法启动重启超时保护");
 
 	stop_8021x_all();
 	stop_wifi_all_wl();
@@ -1559,6 +1565,11 @@ main(int argc, char **argv)
 	}
 
 	if (!strcmp(base, "rc")) {
+		/* SQM 同步加速状态必须先完成，之后才能安装限速队列。 */
+		if (argc == 2 && !strcmp(argv[1], "sync_acceleration") && geteuid() == 0) {
+			reload_nat_modules();
+			return 0;
+		}
 		dbg("error: cannot run rc directly!\n");
 		return EINVAL;
 	}

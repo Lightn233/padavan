@@ -31,6 +31,9 @@
 
 #include "rc.h"
 
+#include <wifi5_policy.h>
+#include <wifi24_policy.h>
+
 #define MAX_FRW 64
 
 static const struct regspec_t {
@@ -573,6 +576,12 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	int i_stream_tx, i_stream_rx, i_mphy, i_mmcs, i_fphy[2], i_val_mbss[2];
 	const char *dat_file, *sku_file, *prefix = (is_aband) ? "wl" : "rt";
 
+#ifdef BOARD_WIFI5_POLICY
+	const struct wifi5_region *wifi5_r = wifi5_region_find(nvram_wlan_get(1, "country_code"));
+	const char *wifi5_cc = wifi5_r ? wifi5_r->cc : "00";
+	unsigned int wifi5_mode = nvram_wlan_get_int(1, "HT_BW");
+	unsigned int wifi5_bw = 20;
+#endif
 	i_ssid_num = 2; // AP+GuestAP
 	i_channel_max = 13;
 
@@ -667,6 +676,18 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 
 	//Channel
 	i_channel = nvram_wlan_get_int(is_aband, "channel");
+#ifdef BOARD_WIFI5_POLICY
+	if (is_aband) {
+		if (!wifi5_r) wifi5_mode = 0;
+		if (wifi5_mode > 4 || nvram_wlan_get_int(1, "gmode") < 3) wifi5_mode = wifi5_mode ? 1 : 0;
+		if (i_channel && !wifi5_effective_bw(wifi5_cc, i_channel, wifi5_mode)) {
+			logmessage("WiFi5", "区域与信道/带宽不兼容，运行时改用自动选信道");
+			i_channel = 0;
+		}
+		wifi5_bw = i_channel ? wifi5_effective_bw(wifi5_cc, i_channel, wifi5_mode) : (20U << (wifi5_mode == 4 ? 3 : wifi5_mode));
+		fprintf(fp, "VHT_Fixed160=%d\n", wifi5_mode == 4);
+	}
+#endif
 	if (i_channel == 0) {
 		/* force disable autoscan when AP-Client in auto-connect mode */
 		if ((i_mode_x == 3 || i_mode_x == 4) && !disable_autoscan) {
@@ -955,7 +976,13 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	//ShortSlot
 	fprintf(fp, "ShortSlot=%d\n", 1);
 
-	fprintf(fp, "IEEE80211H=%d\n", 0);
+	fprintf(fp, "IEEE80211H=%d\n",
+#ifdef BOARD_WIFI5_POLICY
+		is_aband ? 1 : 0
+#else
+		0
+#endif
+	);
 	fprintf(fp, "CarrierDetect=%d\n", 0);
 	fprintf(fp, "PreAntSwitch=\n"); //set this to 1 for RM2100, only mt7615 4.4.2.1
 	fprintf(fp, "PhyRateLimit=%d\n", 0);
@@ -979,14 +1006,26 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		fprintf(fp, "CSPeriod=%d\n", 10);
 #endif
 	}
-	fprintf(fp, "RDRegion=%s\n", "FCC"); // used for Radar Detection
+	fprintf(fp, "RDRegion=%s\n",
+#ifdef BOARD_WIFI5_POLICY
+		(is_aband && wifi5_r) ? wifi5_r->rd : "FCC"
+#else
+		"FCC"
+#endif
+	); // used for Radar Detection
 	fprintf(fp, "StationKeepAlive=%d;%d\n", 0, 0);
 	fprintf(fp, "DfsLowerLimit=%d\n", 0);
 	fprintf(fp, "DfsUpperLimit=%d\n", 0);
 	fprintf(fp, "DfsIndoor=%d\n", 0);
 	fprintf(fp, "DFSParamFromConfig=%d\n", 0);
 	fprintf(fp, "DfsOutdoor=%d\n", 0);
-	fprintf(fp, "DfsEnable=%d\n", 0);
+	fprintf(fp, "DfsEnable=%d\n",
+#ifdef BOARD_WIFI5_POLICY
+		is_aband ? 1 : 0
+#else
+		0
+#endif
+	);
 	fprintf(fp, "FCCParamCh0=\n");
 	fprintf(fp, "FCCParamCh1=\n");
 	fprintf(fp, "FCCParamCh2=\n");
@@ -1243,6 +1282,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 			case 116:
 			case 124:
 			case 132:
+		case 140:
 			case 149:
 			case 157:
 				i_EXTCHA = 1;
@@ -1256,6 +1296,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 			case 120:
 			case 128:
 			case 136:
+		case 144:
 			case 153:
 			case 161:
 				i_EXTCHA = 0;
@@ -1272,10 +1313,26 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	i_val = nvram_wlan_get_int(is_aband, "HT_BW");
 	if (i_val > 1) i_val = 1;
 	if (i_HTBW_MAX == 0) i_val = 0;
+#ifdef BOARD_WIFI5_POLICY
+	if (is_aband && wifi5_bw == 20) i_val = 0;
+	if (!is_aband && nvram_wlan_get_int(0, "HT_BW") == 3 &&
+		!wifi24_fixed40_valid(nvram_wlan_get(0, "country_code"),
+			nvram_wlan_get_int(0, "channel"), nvram_wlan_get_int(0, "HT_EXTCHA"))) {
+		logmessage("WiFi2", "固定 40 MHz 的主/扩展信道无效，运行时回退到 20 MHz");
+		i_val = 0;
+	}
+#endif
 	fprintf(fp, "HT_BW=%d\n", i_val);
 
 	//HT_BSSCoexistence
+#ifdef BOARD_WIFI5_POLICY
+	/* 新值 2 允许 20/40 MHz 共存协商；旧配置不会被自动改写。 */
+	fprintf(fp, "HT_BSSCoexistence=%d\n", !is_aband && i_val &&
+		nvram_wlan_get_int(0, "HT_BW") == 2 &&
+		(i_phy_mode == PHY_11BGN_MIXED || i_phy_mode == PHY_11GN_MIXED || i_phy_mode == PHY_11N));
+#else
 	fprintf(fp, "HT_BSSCoexistence=%d\n", 0);
+#endif
 
 	//HT_BSSCoexAPCntThr
 	fprintf(fp, "HT_BSSCoexAPCntThr=%d\n", 10);
@@ -1371,6 +1428,9 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		
 		if (i_phy_mode == PHY_11VHT_N_A_MIXED || i_phy_mode == PHY_11VHT_N_MIXED || i_phy_mode == PHY_11AX_5G)
 			i_VHTBW_MAX = 1;
+#ifdef BOARD_WIFI5_POLICY
+		fprintf(fp, "VHT_BW=%d\n", i_VHTBW_MAX ? (wifi5_bw == 160 ? 2 : wifi5_bw == 80 ? 1 : 0) : 0);
+#else
 		//VHT_BW
 		i_val = nvram_wlan_get_int(is_aband, "HT_BW");
 #if (USE_WID_5G==7615 && !defined (BOARD_MT7615_DBDC)) || (USE_WID_5G==7915 && !defined (BOARD_MT7915_DBDC))
@@ -1384,6 +1444,8 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 			fprintf(fp, "VHT_BW=%d\n", i_val);
 		}
 		
+#endif
+
 		//VHT_SGI
 		fprintf(fp, "VHT_SGI=%d\n", 1);
 		

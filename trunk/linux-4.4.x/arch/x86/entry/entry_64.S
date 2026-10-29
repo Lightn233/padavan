@@ -57,7 +57,7 @@ ENDPROC(native_usergs_sysret64)
 
 .macro TRACE_IRQS_IRETQ
 #ifdef CONFIG_TRACE_IRQFLAGS
-	bt	$9, EFLAGS(%rsp)		/* interrupts off? */
+	btl	$9, EFLAGS(%rsp)		/* interrupts off? */
 	jnc	1f
 	TRACE_IRQS_ON
 1:
@@ -217,6 +217,8 @@ entry_SYSCALL_64_fastpath:
 	 */
 	testl	$_TIF_ALLWORK_MASK, ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
 	jnz	int_ret_from_sys_call_irqs_off	/* Go to the slow path */
+
+	call	mds_user_clear_buffers
 
 	movq	RIP(%rsp), %rcx
 	movq	EFLAGS(%rsp), %r11
@@ -1643,5 +1645,5 @@ END(nmi)
 
 ENTRY(ignore_sysret)
 	mov	$-ENOSYS, %eax
-	sysret
+	sysretl
 END(ignore_sysret)

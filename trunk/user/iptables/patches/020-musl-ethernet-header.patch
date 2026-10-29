@@ -1,0 +1,12 @@
+--- a/extensions/libxt_mac.c
++++ b/extensions/libxt_mac.c
+@@ -1,9 +1,5 @@
+ #include <stdio.h>
+-#if defined(__GLIBC__) && __GLIBC__ == 2
+ #include <net/ethernet.h>
+-#else
+-#include <linux/if_ether.h>
+-#endif
+ #include <xtables.h>
+ #include <linux/netfilter/xt_mac.h>
+ 

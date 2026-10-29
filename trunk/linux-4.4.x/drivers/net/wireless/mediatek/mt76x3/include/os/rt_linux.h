@@ -380,7 +380,6 @@ typedef spinlock_t			OS_NDIS_SPIN_LOCK;
 
 #define OS_IRQ_LOCK(__lock, __irqflags)			\
 {													\
-    if (__irqflags);                            \
 	__irqflags = 0;									\
 	spin_lock_irqsave((spinlock_t *)(__lock), __irqflags);			\
 }
@@ -392,7 +391,6 @@ typedef spinlock_t			OS_NDIS_SPIN_LOCK;
 #else
 #define OS_IRQ_LOCK(__lock, __irqflags)			\
 {												\
-    if (__irqflags);                            \
 	__irqflags = 0;								\
 	spin_lock_bh((spinlock_t *)(__lock));		\
 }
@@ -1802,4 +1800,3 @@ struct device *rtmp_get_dev(void *ad);
 #define RA_NETLINK  	1
 
 #endif /* __RT_LINUX_H__ */
-

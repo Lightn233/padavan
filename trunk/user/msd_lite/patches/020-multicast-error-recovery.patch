@@ -1,0 +1,46 @@
+--- a/src/stream_sys.c
++++ b/src/stream_sys.c
+@@ -694,8 +694,8 @@
+ 		    cli_data->hub_name, cli_data->hub_name_size,
+ 		    &cli_data->src_conn_params, &str_hub);
+ 		if (0 != error) {
++			/* 回收函数已经关闭套接字并释放客户端，不能再次访问。 */
+ 			str_hub_cli_destroy(NULL, cli_data->strh_cli);
+-			close((int)cli_data->strh_cli->skt);
+ 			free(cli_data);
+ 			SYSLOG_ERR(LOG_ERR, error, "str_hub_create().");
+ 			return;
+--- a/src/liblcb/src/net/socket.c
++++ b/src/liblcb/src/net/socket.c
+@@ -274,8 +274,29 @@
+ 	if (0 != setsockopt((int)skt,
+ 	    ((AF_INET == mc_addr->ss_family) ? IPPROTO_IP : IPPROTO_IPV6),
+ 	    ((0 != join) ? MCAST_JOIN_GROUP : MCAST_LEAVE_GROUP),
+-	    &mc_group, sizeof(mc_group)))
+-		return (errno);
++	    &mc_group, sizeof(mc_group))) {
++		/* 通用组播接口不可用时使用等价的 Linux 按接口加入方式。 */
++		if (ENOPROTOOPT != errno) return (errno);
++#ifdef __linux__
++		if (AF_INET == mc_addr->ss_family) {
++			struct ip_mreqn req;
++			memset(&req, 0, sizeof(req));
++			req.imr_multiaddr = ((const struct sockaddr_in *)mc_addr)->sin_addr;
++			req.imr_ifindex = (int)if_index;
++			if (setsockopt((int)skt, IPPROTO_IP,
++			    join ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP, &req, sizeof(req))) return (errno);
++		} else {
++			struct ipv6_mreq req;
++			memset(&req, 0, sizeof(req));
++			req.ipv6mr_multiaddr = ((const struct sockaddr_in6 *)mc_addr)->sin6_addr;
++			req.ipv6mr_interface = if_index;
++			if (setsockopt((int)skt, IPPROTO_IPV6,
++			    join ? IPV6_JOIN_GROUP : IPV6_LEAVE_GROUP, &req, sizeof(req))) return (errno);
++		}
++#else
++		return (ENOPROTOOPT);
++#endif
++	}
+ 
+ 	return (0);
+ }

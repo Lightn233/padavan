@@ -185,6 +185,8 @@ check_ipt_lib_dir()
 check_setns()
 {
     cat >$TMPDIR/setnstest.c <<EOF
+/* setns 的声明需要 GNU 扩展，与实际编译时保持一致。 */
+#define _GNU_SOURCE
 #include <sched.h>
 int main(int argc, char **argv)
 {

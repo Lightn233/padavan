@@ -15,6 +15,9 @@
  * MA 02111-1307 USA 
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,28 +25,39 @@
 #include <signal.h>
 
 /* Use SVID search */
-#define _GNU_SOURCE
 #include <search.h>
 
 /* CGI hash table */
 static struct hsearch_data *htab = NULL;
 
-void
+static int
+hex_value(unsigned char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+/* 原地单次扫描；拒绝残缺转义和嵌入零字节，避免重叠复制及静默截断。 */
+int
 unescape(char *s)
 {
-	unsigned int c;
-
-	while ((s = strpbrk(s, "%+"))) {
-		/* Parse %xx */
-		if (*s == '%') {
-			sscanf(s + 1, "%02x", &c);
-			*s++ = (char) c;
-			strncpy(s, s + 2, strlen(s) + 1);
-		}
-		/* Space is special */
-		else if (*s == '+')
-			*s++ = ' ';
-	}
+    unsigned char *read = (unsigned char *)s, *write = read;
+    while (*read) {
+        unsigned char c = *read++;
+        if (c == '%') {
+            int hi, lo;
+            if (!read[0] || !read[1]) return 400;
+            hi = hex_value(read[0]); lo = hex_value(read[1]);
+            if (hi < 0 || lo < 0 || (hi == 0 && lo == 0)) return 400;
+            c = (unsigned char)((hi << 4) | lo);
+            read += 2;
+        } else if (c == '+') c = ' ';
+        *write++ = c;
+    }
+    *write = 0;
+    return 0;
 }
 
 char *
@@ -59,12 +73,12 @@ get_cgi(char *name)
 	return ep ? ep->data : NULL;
 }
 
-void
+int
 set_cgi(char *name, char *value)
 {
 	ENTRY e, *ep;
 
-	if (htab == NULL) return;
+	if (htab == NULL) return 500;
 
 	e.key = name;
 	hsearch_r(e, FIND, &ep, htab);
@@ -72,47 +86,40 @@ set_cgi(char *name, char *value)
 		ep->data = value;
 	else {
 		e.data = value;
-		hsearch_r(e, ENTER, &ep, htab);
+		if (!hsearch_r(e, ENTER, &ep, htab)) return 500;
 	}
+	return 0;
 }
 
-void
+int
 init_cgi(char *query)
 {
-	int len, nel;
-	char *q, *name, *value;
+    size_t nel = 1;
+    char *cursor, *pair, *name, *value;
+    int error;
 
-	/* Clear variables */
-	if (!query) {
-		if (htab != NULL) {
-			hdestroy_r(htab);
-			free(htab);
-			htab = NULL;
-		}
-		return;
-	}
+    if (htab != NULL) {
+        hdestroy_r(htab);
+        free(htab);
+        htab = NULL;
+    }
+    if (!query || !*query) return 0;
 
-	/* Parse into individual assignments */
-	q = query;
-	len = strlen(query);
-	nel = 1;
-	while (strsep(&q, "&;"))
-		nel++;
-	if (htab == NULL)
-		htab = calloc(1, sizeof(htab));
-	hcreate_r(nel, htab);
+    for (cursor = query; *cursor; cursor++)
+        if (*cursor == '&' || *cursor == ';') nel++;
+    htab = calloc(1, sizeof(*htab));
+    if (!htab) return 500;
+    if (!hcreate_r(nel, htab)) { free(htab); htab = NULL; return 500; }
 
-	for (q = query; q < (query + len);) {
-		/* Unescape each assignment */
-		unescape(name = value = q);
-
-		/* Skip to next assignment */
-		for (q += strlen(q); q < (query + len) && !*q; q++);
-
-		/* Assign variable */
-		name = strsep(&value, "=");
-		if (value)
-			set_cgi(name, value);
-	}
+    cursor = query;
+    while ((pair = strsep(&cursor, "&;")) != NULL) {
+        value = pair;
+        name = strsep(&value, "=");
+        /* 先拆原始分隔符，再分别解码；%26、%3D 不会变成额外参数。 */
+        error = unescape(name);
+        if (!error && value) error = unescape(value);
+        if (!error && value) error = set_cgi(name, value);
+        if (error) { init_cgi(NULL); return error; }
+    }
+    return 0;
 }
-

@@ -1,0 +1,8 @@
+{
+  "name": "toolchain-mipsel-gcc16.2.0-binutils2.47-musl1.2.6-20261030-linux-x86_64.tar.xz",
+  "bytes": 62125644,
+  "sha256": "6f8391c61ce696200be8e0c659d471b90d5baafc57112bc223ec757acd105df1",
+  "url": "https://github.com/Lightn233/padavan/releases/download/toolchain-20261030/toolchain-mipsel-gcc16.2.0-binutils2.47-musl1.2.6-20261030-linux-x86_64.tar.xz",
+  "host": "linux-x86_64",
+  "source_archive": "toolchain-source-inputs-20261030.tar"
+}

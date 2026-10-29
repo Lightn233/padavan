@@ -7,9 +7,11 @@ SOURCE_JOBS ?= 4
 SOURCE_KERNEL ?= $(TOPDIR)/../trunk/linux-4.4.x
 SOURCE_REPLACE ?= 0
 SOURCE_OFFLINE ?= 0
-TOOLCHAIN_ARCHIVE ?= $(TOPDIR)/downloads/toolchain-mipsel-gcc16.2.0-binutils2.47-musl1.2.6.tar.xz
+TOOLCHAIN_ARCHIVE ?= $(TOPDIR)/downloads/toolchain-mipsel-gcc16.2.0-binutils2.47-musl1.2.6-20261030-linux-x86_64.tar.xz
+TOOLCHAIN_PREBUILT ?= auto
 ENTRY_ARGS = --prefix "$(CT_PREFIX)" --work "$(SOURCE_WORK)" --kernel "$(SOURCE_KERNEL)" --cache "$(SOURCE_CACHE)" --archive "$(TOOLCHAIN_ARCHIVE)" --jobs "$(SOURCE_JOBS)"
 ENTRY_ARGS += $(if $(filter 1,$(SOURCE_REPLACE)),--replace-existing) $(if $(filter 1,$(SOURCE_OFFLINE)),--offline)
+ENTRY_ARGS += --prebuilt "$(TOOLCHAIN_PREBUILT)"
 
 .PHONY: all build download prepare verify clean
 all: build

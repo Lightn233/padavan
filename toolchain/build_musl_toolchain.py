@@ -140,7 +140,8 @@ try:
             entries += '\nheader-y += ' + name + '\n'
     uapi.write_text(entries)
     run('kernel-headers-vendor', ['make', 'ARCH=mips', 'CROSS_COMPILE=', 'headers_install', 'INSTALL_HDR_PATH=' + str(S / 'usr')], kh)
-    basic = [gsrc / 'configure', '--target=' + target, '--prefix=' + str(P), '--with-sysroot=' + str(S), '--with-local-prefix=' + str(S), '--with-as=' + str(P / 'bin' / (target + '-as')), '--with-ld=' + str(P / 'bin' / (target + '-ld')), '--with-abi=32', '--with-arch=mips32r2', '--with-tune=mips32r2', '--with-float=hard', '--disable-bootstrap', '--disable-multilib', '--disable-nls', '--disable-plugin', '--disable-libgomp', '--disable-libssp', '--disable-libquadmath', '--disable-libquadmath-support', '--disable-libsanitizer', '--with-isl=no', '--with-gnu-ld']
+    # 让 GCC 按安装位置寻找同目录工具，不能把本机 as/ld 的绝对路径编进分发包。
+    basic = [gsrc / 'configure', '--target=' + target, '--prefix=' + str(P), '--with-sysroot=' + str(S), '--with-local-prefix=' + str(S), '--with-abi=32', '--with-arch=mips32r2', '--with-tune=mips32r2', '--with-float=hard', '--disable-bootstrap', '--disable-multilib', '--disable-nls', '--disable-plugin', '--disable-libgomp', '--disable-libssp', '--disable-libquadmath', '--disable-libquadmath-support', '--disable-libsanitizer', '--with-isl=no', '--with-gnu-ld']
     gd = builddir('gcc-bootstrap')
     run('gcc-bootstrap-configure', basic + ['--enable-languages=c', '--without-headers', '--with-newlib', '--disable-threads', '--disable-shared', '--disable-libatomic'], gd)
     run('gcc-bootstrap-make', ['make', '-j' + str(a.jobs), 'all-gcc'], gd)

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """工具链入口：固定来源校验、源码构建、保留旧目录与离线兼容。"""
 from pathlib import Path
-import argparse,datetime,fcntl,hashlib,json,os,shutil,subprocess,tempfile,urllib.request
+import argparse,datetime,fcntl,hashlib,json,os,shutil,subprocess,tempfile,urllib.request,urllib.error
+import prebuilt_toolchain
 HERE=Path(__file__).resolve().parent
 TARGET='mipsel-linux-musl'
 def digest(p,algorithm='sha256'):
@@ -67,15 +68,30 @@ def main():
  ap.add_argument('--kernel',type=Path,required=True);ap.add_argument('--cache',type=Path,required=True)
  ap.add_argument('--archive',type=Path);ap.add_argument('--jobs',type=int,default=4)
  ap.add_argument('--offline',action='store_true');ap.add_argument('--replace-existing',action='store_true')
+ ap.add_argument('--prebuilt',choices=['auto','never','required'],default='auto')
  a=ap.parse_args();p=a.prefix.absolute();w=a.work.resolve();spec=json.loads((HERE/'source-inputs.json').read_text())
  if a.action=='ensure':
   if (p/'padavan-source-build.json').exists():verify_source(p,spec);print('源码工具链已校验，未改动文件。');return
   if a.archive is not None and a.archive.is_file():
+   prebuilt=prebuilt_toolchain.specification()
+   if a.archive.name==prebuilt['name'] or digest(a.archive)==prebuilt['sha256']:
+    prebuilt_toolchain.install(a.archive,p,prebuilt,lambda q:verify_source(q,spec),smoke);return
    subprocess.run(['python3',str(HERE/'install_u5_toolchain.py'),'--prefix',str(p),'--archive',str(a.archive)],check=True);return
   if os.path.lexists(p):
    # 仍校验旧版已安装工具链，不能因为缺少归档而覆盖已有目录。
    subprocess.run(['python3',str(HERE/'install_u5_toolchain.py'),'--prefix',str(p),'--archive',str(a.archive or HERE/'downloads/unavailable.tar.xz')],check=True);return
-  # 新克隆没有本机离线包时，复用固定来源的源码构建流程。
+  if a.prebuilt!='never' and prebuilt_toolchain.supported_host() and not a.offline:
+   prebuilt=prebuilt_toolchain.specification();archive=a.archive or a.cache/prebuilt['name']
+   try:
+    prebuilt_toolchain.fetch(archive,prebuilt)
+   except (urllib.error.URLError,TimeoutError,OSError) as error:
+    if a.prebuilt=='required':raise RuntimeError('无法取得本仓库预编译工具链：'+str(error)) from error
+    print('本仓库预编译包暂不可取得，改用固定输入的源码构建：'+str(error),flush=True)
+   else:
+    prebuilt_toolchain.install(archive,p,prebuilt,lambda q:verify_source(q,spec),smoke);return
+  elif a.prebuilt=='required':
+   raise RuntimeError('当前主机不支持该预编译包，或离线模式未提供归档；可使用 make -C toolchain build 从源码构建。')
+  # 下载不可用、离线输入或其他宿主架构仍使用同仓库的源码构建流程。
   a.action='build'
   print('未找到离线工具链归档，开始从固定版本源码准备工具链。',flush=True)
  if a.action=='verify':print(json.dumps(verify_source(p,spec),ensure_ascii=False));return

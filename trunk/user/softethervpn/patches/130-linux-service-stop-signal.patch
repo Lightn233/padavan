@@ -1,0 +1,53 @@
+--- a/src/Mayaqua/Unix.c
++++ b/src/Mayaqua/Unix.c
+@@ -2728,6 +2728,17 @@
+ 
+ 		start();
+ 
++#ifdef UNIX_LINUX
++		// 所有工作线程继承阻塞掩码，SIGTERM 只由主线程同步消费。
++		// 这样信号提前到达或工作线程繁忙时，都不会错过停止通知。
++		{
++			sigset_t stop_signals;
++			int received_signal;
++			sigemptyset(&stop_signals);
++			sigaddset(&stop_signals, SIGTERM);
++			while (sigwait(&stop_signals, &received_signal) != 0) {}
++		}
++#else
+ 		// Starting complete. wait for arriving SIGTERM from another process
+ 		signal(SIGTERM, &UnixSigTermHandler);
+ 		while (unix_svc_terminate == false)
+@@ -2743,6 +2754,8 @@
+ 			SleepThread(1394);
+ #endif	// defined(UNIX_BSD) || defined(UNIX_MACOS)
+ 		}
++
++#endif // UNIX_LINUX
+ 
+ 		// Stop
+ 		Free(yobi1);
+@@ -2878,6 +2891,23 @@
+ void UnixServiceMain(int argc, char *argv[], char *name, SERVICE_FUNCTION *start, SERVICE_FUNCTION *stop)
+ {
+ 	UINT mode = 0;
++#ifdef UNIX_LINUX
++	// 必须在 InitMayaqua 创建计时线程之前设置，不能只阻塞主线程。
++	// 服务进程返回后即退出，停止期间保持阻塞，避免重复信号触发监督进程重启。
++	if (argc >= 2 && StrCmpi(argv[1], UNIX_SVC_ARG_EXEC_SVC) == 0)
++	{
++		sigset_t stop_signals;
++		int error;
++		sigemptyset(&stop_signals);
++		sigaddset(&stop_signals, SIGTERM);
++		error = pthread_sigmask(SIG_BLOCK, &stop_signals, NULL);
++		if (error != 0)
++		{
++			fprintf(stderr, "Cannot block service stop signal: %d\n", error);
++			_exit(1);
++		}
++	}
++#endif
+ 	// Start of the Mayaqua
+ 	InitMayaqua(false, false, argc, argv);
+ 

@@ -230,12 +230,6 @@ endif
 ifneq ($(CONFIG_FIRMWARE_INCLUDE_SMARTDNS),y)
 	rm -f $(INSTALLDIR)/www/Advanced_smartdns.asp
 endif
-ifneq ($(CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_SERVER),y)
-	rm -f $(INSTALLDIR)/www/vpnsrv.asp
-endif
-ifneq ($(CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CLIENT),y)
-	rm -f $(INSTALLDIR)/www/vpn_clients.asp
-	rm -f $(INSTALLDIR)/www/vpncli.asp
-endif
+# VPN 页面由 PPTP、L2TP 和 OpenVPN 共用，不随 SoftEther 插件开关裁剪。
 clean:
 	@echo "Clean www romfs"

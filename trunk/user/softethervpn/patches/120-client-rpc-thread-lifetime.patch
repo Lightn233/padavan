@@ -1,0 +1,25 @@
+--- a/src/Cedar/Client.c
++++ b/src/Cedar/Client.c
+@@ -5461,6 +5461,9 @@
+ 	}
+ 
+ 	conn = (CLIENT_RPC_CONNECTION *)param;
++	// 子线程先持有自己的引用，再发布连接；快速断开时不会等待父线程赋值。
++	conn->Thread = thread;
++	AddRef(thread->ref);
+ 	s = conn->Sock;
+ 	c = conn->Client;
+ 	AddRef(s->ref);
+@@ -5555,8 +5558,10 @@
+ 		conn->Sock = s;
+ 		AddRef(s->ref);
+ 
+-		conn->Thread = NewThread(CiRpcAcceptThread, (void *)conn);
+-		WaitThreadInit(conn->Thread);
++		// NewThread 返回前连接可能已经结束，父线程只使用自己的线程引用。
++		THREAD *accept_thread = NewThread(CiRpcAcceptThread, (void *)conn);
++		WaitThreadInit(accept_thread);
++		ReleaseThread(accept_thread);
+ 
+ 		ReleaseSock(s);
+ 	}

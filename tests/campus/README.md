@@ -34,3 +34,11 @@ MIPS 单元测试使用静态链接；启动脚本测试可通过 `--shell` 指�
 - 本机 C 测试启用 ASan/UBSan；MIPS 使用项目目标架构执行相同函数测试。
 
 这些测试不能替代真实校园认证服务器、物理网卡、长时间运行和不同机型的验收。完整协议联调的阶段结果及未通过项目见 `docs/campus-validation-20261030.md`。
+
+## 正常协议 TAP 检查器
+
+`mentohust_tap_check.c` 用于补测 MentoHUST 的正常 libpcap 收发，创建不持久化的 `u12mento` TAP，不连接物理接口或 br0。它只发送正常身份、MD5、成功心跳与重新认证报文；退出时删除临时接口并停止自己的子进程。配置和 PID 写入通过私有挂载命名空间隔离。
+
+在独立临时目录准备 `bin_mentohust`、其同架构依赖目录 `lib/`、`etc/storage/mentohust.conf` 和空 `run/`。测试配置使用虚构账户 `lab-user` / `lab-password`、接口 `u12mento`、关闭 DHCP 和后台运行。编译为对应目标架构后，以管理员权限运行 `tap-check /临时目录的绝对路径`；Ubuntu 优先再用 `unshare --net` 隔离。测试输出两轮响应摘要，需要与 `MD5(标识字节 + lab-password + 00..0f)` 比较。不得拿真实账号或现有配置目录作为测试目录。
+
+本检查不是校园接入认证测试；物理校园网络及学校扩展仍需现场验证。

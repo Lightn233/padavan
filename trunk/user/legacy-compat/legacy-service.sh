@@ -64,9 +64,16 @@ compat_launch() {
     compat_running && compat_ready
 }
 compat_ready() { return 0; }
+# 精简 BusyBox 不一定包含 cmp；使用固件已有的 SHA-256，读取失败不能视为相同。
+compat_same_file() {
+    local first second
+    first=$(sha256sum "$1") || return 1
+    second=$(sha256sum "$2") || return 1
+    [ "${first%% *}" = "${second%% *}" ]
+}
 compat_apply() {
     local candidate="$1"; shift
-    if compat_running && cmp -s "$candidate" "$CONF" && [ "${COMPAT_FORCE:-0}" != 1 ]; then
+    if compat_running && compat_same_file "$candidate" "$CONF" && [ "${COMPAT_FORCE:-0}" != 1 ]; then
         rm -f "$candidate"; return 0
     fi
     local restore=0

@@ -1,3 +1,5 @@
+> 新版界面在 [padavan-modern](https://github.com/Lightn233/padavan-modern) 独立开发，目前为预览源码；本仓库保留稳定界面。见 [双仓库维护约定](docs/双仓库维护.md)。
+
 # RM2100 / Padavan 维护版
 
 这是 Lightn233 正在维护的 Padavan 源码，主要在 Redmi RM2100 上验证。仓库保留多机型构建入口，使用 `make RM2100` 选择 RM2100，其他机型仍使用 `make <机型名称>`。

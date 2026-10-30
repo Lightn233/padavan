@@ -583,6 +583,7 @@ INT build_vht_op_ie(RTMP_ADAPTER *pAd, UCHAR bw, UCHAR Channel, struct wifi_dev 
 {
 	VHT_OP_IE vht_op;
 	UCHAR cent_ch;
+	UCHAR prim_ch = Channel;
 #ifdef RT_BIG_ENDIAN
 	UINT16 tmp;
 #endif /* RT_BIG_ENDIAN */
@@ -607,10 +608,9 @@ INT build_vht_op_ie(RTMP_ADAPTER *pAd, UCHAR bw, UCHAR Channel, struct wifi_dev 
 	if (Channel > 14 &&
 		(pAd->CommonCfg.bIEEE80211H == 1) &&
 		(pDot11h->RDMode == RD_SWITCHING_MODE))
-		cent_ch = vht_cent_ch_freq(pDot11h->org_ch, bw);
-	else
+		prim_ch = pDot11h->org_ch;
 #endif /* CONFIG_AP_SUPPORT */
-		cent_ch = vht_cent_ch_freq(Channel, bw);
+	cent_ch = vht_cent_ch_freq(prim_ch, bw);
 
 	switch (bw) {
 	case VHT_BW_2040:
@@ -627,7 +627,8 @@ INT build_vht_op_ie(RTMP_ADAPTER *pAd, UCHAR bw, UCHAR Channel, struct wifi_dev 
 
 	case VHT_BW_160:
 		vht_op.vht_op_info.ch_width = 1;
-		vht_op.vht_op_info.center_freq_1 = (cent_ch - 8);
+		/* 主 80 MHz 中心随主信道变化；切换期间仍使用原主信道。 */
+		vht_op.vht_op_info.center_freq_1 = vht_cent_ch_freq(prim_ch, VHT_BW_80);
 		vht_op.vht_op_info.center_freq_2 = cent_ch;
 		break;
 

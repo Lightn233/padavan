@@ -2572,21 +2572,22 @@ static VOID InsertWideBWChSwitchIE(
 		case VHT_BW_160:
 #ifdef DOT11_VHT_R2
 			wb_info.new_ch_width = 1;
-			wb_info.center_freq_1 = (vht_cent_ch_freq(wdev->channel, vht_bw) - 8);
-			wb_info.center_freq_2 = vht_cent_ch_freq(wdev->channel, vht_bw);
+			/* 切换通告描述目标信道，其主 80 MHz 中心须与目标一致。 */
+			wb_info.center_freq_1 = vht_cent_ch_freq(NewCh, VHT_BW_80);
+			wb_info.center_freq_2 = vht_cent_ch_freq(NewCh, vht_bw);
 #else
 			wb_info.new_ch_width = 2;
-			wb_info.center_freq_1 = vht_cent_ch_freq(wdev->channel, vht_bw);
+			wb_info.center_freq_1 = vht_cent_ch_freq(NewCh, vht_bw);
 #endif /* DOT11_VHT_R2 */
 		break;
 		case VHT_BW_8080:
 #ifdef DOT11_VHT_R2
 			wb_info.new_ch_width = 1;
-			wb_info.center_freq_1 = vht_cent_ch_freq(wdev->channel, vht_bw);
+			wb_info.center_freq_1 = vht_cent_ch_freq(NewCh, vht_bw);
 			wb_info.center_freq_2 = wlan_operate_get_cen_ch_2(wdev);
 #else
 			wb_info.new_ch_width = 3;
-			wb_info.center_freq_1 = vht_cent_ch_freq(wdev->channel, vht_bw);
+			wb_info.center_freq_1 = vht_cent_ch_freq(NewCh, vht_bw);
 			wb_info.center_freq_2 = wlan_operate_get_cen_ch_2(wdev);
 #endif /* DOT11_VHT_R2 */
 		break;

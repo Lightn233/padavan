@@ -620,7 +620,8 @@ VOID MakeChSwitchAnnounceIEandExtend(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, U
 
 			case VHT_BW_160:
 				wb_info.new_ch_width = 1;
-				wb_info.center_freq_1 = (vht_cent_ch_freq(wdev->channel, vht_bw) - 8);
+				/* 主 80 MHz 中心由目标主信道确定，不能固定取下半段。 */
+				wb_info.center_freq_1 = vht_cent_ch_freq(wdev->channel, VHT_BW_80);
 				wb_info.center_freq_2 = vht_cent_ch_freq(wdev->channel, vht_bw);
 				break;
 

@@ -3942,7 +3942,8 @@ static void addrconf_dad_run(struct inet6_dev *idev, bool restart)
 		// delay WAN & LAN DAD sending.
 		if (0 == strcmp(idev->dev->name, "eth3")
 				|| 0 == strcmp(idev->dev->name, "br0")) {
-			delay = 6000; // ms
+			/* 延迟接口按时钟节拍计时，先将 6000 毫秒转换为节拍。 */
+			delay = msecs_to_jiffies(6000);
 		}
 	}
 

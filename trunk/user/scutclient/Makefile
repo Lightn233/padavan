@@ -1,34 +1,33 @@
-# https://github.com/hanwckf/scutclient.git
-SRC_NAME := scutclient-upstream
-SRC_FILE := scutclient-a58996875c61d0cdf8ec435057befc1c87bd6863
-THISDIR = $(shell pwd)
+include $(ROOTDIR)/rules.mk
 
-all: extract_test config_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)/build
+PKG_NAME:=scutclient
+PKG_VERSION:=a589968
+PKG_SOURCE:=scutclient-a58996875c61d0cdf8ec435057befc1c87bd6863.tar.gz
+PKG_HASH:=b4a572884782cc46651a19fe5fba8a1b87a4cec257d2d6f479a4c74ee0e074d5
 
-extract_test:
-	( if [ ! -d $(THISDIR)/$(SRC_NAME) ]; then \
-		tar -xf $(SRC_FILE).tar.gz; \
-	fi )
+include $(INCLUDE_DIR)/package.mk
 
-config_test:
-	( if [ -f ./config_done ]; then \
-		echo "the same configuration"; \
-	else \
-		make configure && touch config_done; \
-	fi )
+define Build/Prepare
+	mkdir -p "$(DL_DIR)"
+	[ -f "$(DL_DIR)/$(PKG_SOURCE)" ] || cp "$(CURDIR)/$(PKG_SOURCE)" "$(DL_DIR)/$(PKG_SOURCE)"
+	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
+	tar -xf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
+	$(Build/Patch)
+endef
 
-configure:
-	( mkdir -p $(SRC_NAME)/build && cd $(SRC_NAME)/build ; \
-		cmake -DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_TOOLCHAIN_FILE=$(CONFIG_CMAKE_TOOLCHAIN_FILE) \
-		.. \
-	)
+define Build/Configure
+	cmake -S $(PKG_BUILD_DIR) -B $(PKG_BUILD_DIR)/build \
+		-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=mips -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-DCMAKE_C_COMPILER="$(TARGET_CC)" -DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -std=gnu11" \
+		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS)" -DCMAKE_BUILD_TYPE=Release
+endef
+define Build/Compile
+	cmake --build $(PKG_BUILD_DIR)/build --parallel $(HOST_NCPU)
+endef
 
-clean:
-	rm -rf $(SRC_NAME)/build
-	rm -f config_done
+$(eval $(call BuildPackage,scutclient))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
 
-romfs:
-	${ROMFSINST} $(THISDIR)/scripts/ /usr/bin/
-	$(ROMFSINST) -p +x $(THISDIR)/$(SRC_NAME)/build/scutclient /usr/bin/bin_scutclient
+romfs: $(STAMP_BUILT)
+	$(ROMFSINST) $(CURDIR)/scripts/ /usr/bin/
+	$(ROMFSINST) $(PKG_BUILD_DIR)/build/scutclient /usr/bin/bin_scutclient

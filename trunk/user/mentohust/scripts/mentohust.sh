@@ -1,7 +1,24 @@
 #!/bin/sh
 
 pidfile="/var/sh_mentohust.pid"
-[ -f $pidfile ] && kill -9 "$(cat $pidfile)" || echo "$$" > $pidfile
+# 一次性启动脚本互斥执行，不能按旧 PID 文件杀死可能已复用该编号的进程。
+lockdir="${pidfile}.lock"
+if ! mkdir "$lockdir" 2>/dev/null; then
+	# 只清理已退出的持有者留下的标记；新持有者的标记不会被删除。
+	owner=$(find "$lockdir" -maxdepth 1 -type f 2>/dev/null)
+	case "${owner##*/}" in
+	''|*[!0-9]*) echo "已有服务操作正在执行，稍后重试。" >&2; exit 1 ;;
+	esac
+	if kill -0 "${owner##*/}" 2>/dev/null ||
+	   ! rm -f "$owner" || ! rmdir "$lockdir" 2>/dev/null ||
+	   ! mkdir "$lockdir" 2>/dev/null; then
+		echo "已有服务操作正在执行，稍后重试。" >&2
+		exit 1
+	fi
+fi
+touch "$lockdir/$$" || { rmdir "$lockdir"; exit 1; }
+trap 'rm -f "$lockdir/$$"; rmdir "$lockdir" 2>/dev/null' 0
+trap 'exit 1' 1 2 15
 
 mentohust_exec="bin_mentohust"
 conf_file="/var/mentohust.conf"
@@ -18,34 +35,35 @@ func_log(){
 }
 
 func_gen_conf(){
-	if [ -z "$(nvram get mentohust_nic)" ]; then
-		nvram set mentohust_nic="$(nvram get wan_ifname)"
-		nvram commit
-	fi
-
-	echo "[MentoHUST]" > $conf_file
-	for c in $mentohust_conf_vars; do
-		echo "${c}=" >> $conf_file
-	done
-
-	local line=2
+	local tmp key c value nic cr
+	umask 077
+	tmp=$(mktemp "${conf_file}.XXXXXX") || return 1
+	cr=$(printf '\r')
+	nic=$(nvram get mentohust_nic)
+	[ -n "$nic" ] || nic=$(nvram get wan_ifname)
+	printf '[MentoHUST]\n' >"$tmp" || { rm -f "$tmp"; return 1; }
+	set -- $mentohust_conf_vars
 	for c in $mentohust_vars; do
-		i="$(nvram get mentohust_${c})"
-		if [ -n "${i}" ]; then
-			i="$(echo $i |sed 's/\//\\\//g')"
-			sed -i "${line}s/\$/${i}/" $conf_file
-		fi
-		line=$((line+1))
+		key=$1
+		shift
+		value=$(nvram get "mentohust_${c}")
+		[ "$c" != nic ] || value=$nic
+		# 每个配置项只占一行；按原值写入，不把密码当作 sed 表达式。
+		case "$value" in
+		*"$cr"*|*'
+'*) func_log "配置项 $key 包含换行，保留旧配置。"; rm -f "$tmp"; return 1 ;;
+		esac
+		printf '%s=%s\n' "$key" "$value" >>"$tmp" || { rm -f "$tmp"; return 1; }
 	done
-
-	ln -sf $conf_file $bin_conf_file
+	chmod 600 "$tmp" && mv -f "$tmp" "$conf_file" || { rm -f "$tmp"; return 1; }
+	ln -sf "$conf_file" "$bin_conf_file"
 }
 
 func_start(){
 	if [ -f $bin_conf_file ] && [ ! -L $bin_conf_file ]; then
 		func_log "Using existed conf: $bin_conf_file"
 	else
-		func_gen_conf
+		func_gen_conf || return 1
 	fi
 
 	echo -n "Starting mentohust:..."
@@ -53,8 +71,10 @@ func_start(){
 	if [ $? -eq 0 ] ; then
 		echo "[  OK  ]"
 		func_log "Daemon is started"
+		return 0
 	else
 		echo "[FAILED]"
+		return 1
 	fi
 }
 
@@ -80,6 +100,6 @@ restart)
 	echo "Usage: $0 { start | stop | restart }"
 	;;
 esac
-rm -f $pidfile
-exit 0
+result=$?
+exit "$result"
 

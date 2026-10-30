@@ -1,0 +1,272 @@
+--- a/src/mentohust.c
++++ b/src/mentohust.c
+@@ -41,7 +41,7 @@
+ static void sig_handle(int sig);	/* 信号回调 */
+ static void pcap_handle(u_char *user, const struct pcap_pkthdr *h, const u_char *buf);	/* pcap_loop回调 */
+ static void showRuijieMsg(const u_char *buf, unsigned bufLen);	/* 显示锐捷服务器提示信息 */
+-static void showCernetMsg(const u_char *buf);	/* 显示赛尔服务器提示信息 */
++static void showCernetMsg(const u_char *buf, unsigned bufLen);	/* 显示赛尔服务器提示信息 */
+ 
+ int main(int argc, char **argv)
+ {
+@@ -117,19 +117,47 @@
+ static void pcap_handle(u_char *user, const struct pcap_pkthdr *h, const u_char *buf)
+ {
+ 	static unsigned failCount = 0;
+-#ifndef NO_ARP
++	static u_char requestHeader[40];
++	unsigned bodyLen, eapLen;
++	/* 捕获长度必须先于任何报文下标访问；线上的声明长度也不能越过捕获边界。 */
++	if (h == NULL || buf == NULL || h->caplen < 14)
++		return;
+ 	if (buf[0x0c]==0x88 && buf[0x0d]==0x8e) {
+-#endif
++		if (h->caplen < 18)
++			return;
++		bodyLen = ((unsigned)buf[16] << 8) | buf[17];
++		if (bodyLen > h->caplen - 18)
++			return;
++		if (buf[15] == 0) {
++			if (bodyLen < 4)
++				return;
++			eapLen = ((unsigned)buf[20] << 8) | buf[21];
++			if (eapLen < 4 || eapLen > bodyLen)
++				return;
++			if (buf[18] == 1 && eapLen < 5)
++				return;
++			if (buf[18] == 1 && buf[22] == 4 &&
++			    (eapLen < 22 || buf[23] != 16))
++				return;
++			/* 锐捷成功包还必须带完整心跳密钥，不能从旧缓存读出一个假密钥。 */
++			if (buf[18] == 3 && startMode % 3 != 2 &&
++			    (h->caplen < 28 || 0x1cu + buf[27] + 0x69u + 28u > h->caplen))
++				return;
++		}
++
+ 		if (memcmp(destMAC, buf+6, 6)!=0 && startMode>2)	/* 服务器MAC地址不符 */
+ 			return;
+-		capBuf = buf;
++		/* libpcap 缓冲区会在下一次收包时复用；重发只需要保存标识和 MD5 种子。 */
++		memset(requestHeader, 0, sizeof(requestHeader));
++		memcpy(requestHeader, buf, h->caplen < sizeof(requestHeader) ? h->caplen : sizeof(requestHeader));
++		capBuf = requestHeader;
+ 		if (buf[0x0F]==0x00 && buf[0x12]==0x01 && buf[0x16]==0x01) {	/* 验证用户名 */
+ 			if (startMode < 3) {
+ 				memcpy(destMAC, buf+6, 6);
+ 				printf(_("** 认证MAC:\t%s\n"), formatHex(destMAC, 6));
+ 				startMode += 3;	/* 标记为已获取 */
+ 			}
+-			if (startMode==3 && memcmp(buf+0x17, "User name", 9)==0)	/* 塞尔 */
++			if (startMode==3 && eapLen >= 14 && memcmp(buf+0x17, "User name", 9)==0)	/* 塞尔 */
+ 				startMode = 5;
+ 			switchState(ID_IDENTITY);
+ 		}
+@@ -150,7 +178,7 @@
+ 				switchState(ID_ECHO);
+ 		}
+ 		else if (buf[0x0F]==0x00 && buf[0x12]==0x01 && buf[0x16]==0x02)	/* 显示赛尔提示信息 */
+-			showCernetMsg(buf);
++			showCernetMsg(buf, h->caplen);
+ 		else if (buf[0x0F] == 0x05)	/* (赛尔)响应在线 */
+ 			switchState(ID_ECHO);
+ 		else if (buf[0x0F]==0x00 && buf[0x12]==0x04) {  /* 认证失败或被踢下线 */
+@@ -158,7 +186,7 @@
+ 				printf(_(">> 认证掉线，开始重连!\n"));
+ 				switchState(ID_START);
+ 			}
+-			else if (buf[0x1b]!=0 || startMode%3==2) {
++			else if (startMode%3==2 || h->caplen <= 0x1b || buf[0x1b]!=0) {
+ 				printf(_(">> 认证失败!\n"));
+ 				if (startMode%3 != 2)
+ 					showRuijieMsg(buf, h->caplen);
+@@ -173,7 +201,9 @@
+ 		}
+ #ifndef NO_ARP
+ 	} else if (gateMAC[0]!=0xFE && buf[0x0c]==0x08 && buf[0x0d]==0x06) {
+-		if (*(u_int32_t *)(buf+0x1c) == gateway) {
++		if (h->caplen >= 42 && buf[14] == 0 && buf[15] == 1 &&
++		    buf[16] == 8 && buf[17] == 0 && buf[18] == 6 && buf[19] == 4 &&
++		    memcmp(buf+0x1c, &gateway, sizeof(gateway)) == 0) {
+ 			char str[50];
+ 			if (gateMAC[0] == 0xFF) {
+ 				memcpy(gateMAC, buf+0x16, 6);
+@@ -192,18 +222,22 @@
+ #endif
+ 			}
+ 		}
+-	}
+-#endif
++#endif
++	}
+ }
+ 
+ static void showRuijieMsg(const u_char *buf, unsigned bufLen)
+ {
+ 	char *serverMsg;
+-	int length = buf[0x1b];
++	int length;
++	if (bufLen < 28)
++		return;
++	length = buf[0x1b];
++	if ((unsigned)length > bufLen - 28)
++		length = bufLen - 28;
+ 	if (length > 0) {
+-		for (serverMsg=(char *)(buf+0x1c); *serverMsg=='\r'||*serverMsg=='\n'; serverMsg++,length--);	/* 跳过开头的换行符 */
+-		if (strlen(serverMsg) < length)
+-			length = strlen(serverMsg);
++		for (serverMsg=(char *)(buf+0x1c); length > 0 && (*serverMsg=='\r'||*serverMsg=='\n'); serverMsg++,length--);	/* 跳过开头的换行符 */
++		length = strnlen(serverMsg, length);
+ 		if (length>0 && (serverMsg=gbk2utf(serverMsg, length))!=NULL) {
+ 			if (strlen(serverMsg)) {
+ 				printf(_("$$ 系统提示:\t%s\n"), serverMsg);
+@@ -218,11 +252,13 @@
+ 	}
+ 	if ((length=0x1c+buf[0x1b]+0x69+39) < bufLen) {
+ 		serverMsg=(char *)(buf+length);
+-		if (buf[length-1]-2 > bufLen-length)
++		if (buf[length-1] < 2)
++			return;
++		if ((unsigned)(buf[length-1]-2) > bufLen-length)
+ 			length = bufLen - length;
+ 		else
+ 			length = buf[length-1]-2;
+-		for (; *serverMsg=='\r'||*serverMsg=='\n'; serverMsg++,length--);
++		for (; length > 0 && (*serverMsg=='\r'||*serverMsg=='\n'); serverMsg++,length--);
+ 		if (length>0 && (serverMsg=gbk2utf(serverMsg, length))!=NULL) {
+ 			if (strlen(serverMsg)) {
+ 				printf(_("$$ 计费提示:\t%s\n"), serverMsg);
+@@ -237,12 +273,18 @@
+ 	}
+ }
+ 
+-static void showCernetMsg(const u_char *buf)
++static void showCernetMsg(const u_char *buf, unsigned bufLen)
+ {
+ 	char *serverMsg = (char *)(buf+0x17);
+-	int length = ntohs(*(u_int16_t *)(buf+0x14)) - 5;
+-	if (strlen(serverMsg) < length)
+-		length = strlen(serverMsg);
++	int length;
++	if (bufLen < 23)
++		return;
++	length = (((unsigned)buf[20] << 8) | buf[21]) - 5;
++	if (length <= 0)
++		return;
++	if ((unsigned)length > bufLen - 23)
++		length = bufLen - 23;
++	length = strnlen(serverMsg, length);
+ 	if (length>0 && (serverMsg=gbk2utf(serverMsg, length))!=NULL)
+ 	{
+ 		printf(_("$$ 系统提示:\t%s\n"), serverMsg);
+--- a/src/myfunc.c
++++ b/src/myfunc.c
+@@ -521,7 +521,8 @@
+ 
+ u_char *checkPass(u_char id, const u_char *md5Seed, int seedLen)
+ {
+-	u_char md5Src[80];
++	/* 1 字节标识 + 最长密码 + 赛尔盐 + 已验证的 16 字节种子。 */
++	u_char md5Src[1 + 64 + 10 + 16];
+ 	int md5Len = strlen(password);
+ 	md5Src[0] = id;
+ 	memcpy(md5Src+1, password, md5Len);
+--- a/src/myconfig.c
++++ b/src/myconfig.c
+@@ -26,6 +26,7 @@
+ #include <unistd.h>
+ #include <sys/stat.h>
+ #include <termios.h>
++#include <ctype.h>
+ 
+ #define ACCOUNT_SIZE		65	/* 用户名密码长度*/
+ #define NIC_SIZE			16	/* 网卡名最大长度 */
+@@ -159,46 +160,35 @@
+ }
+ #endif
+ 
+-int getpasswd(char  passwd[])
+-{
+-    int ret=0;
+-	struct termios termios_buf;
+-	
+-	if(tcgetattr(STDIN_FILENO,&termios_buf)!=0)
+-	{
+-		perror(_("获取终端属性失败"));
+-		return -1;
+-	}
+-	
+-	termios_buf.c_lflag &= ~ECHOFLAGS;
+-	
+-	if(tcsetattr(STDIN_FILENO,TCSAFLUSH,&termios_buf)!=0)
+-	{
+-		perror(_("设置终端属性失败"));
+-		return -2;
+-	}
+-	
+-	if(passwd!=NULL){
+-	    ret=scanf("%s", passwd);
+-	}
+-	
+-    //printf("\nYour passwd is %s\n",passwd);
+-
+-	if(tcgetattr(STDIN_FILENO,&termios_buf)!=0)
+-	{
+-		perror(_("获取终端属性失败"));
+-		return -1;
+-	}
+-	
+-	termios_buf.c_lflag |= ECHOFLAGS;
+-	
+-	if(tcsetattr(STDIN_FILENO,TCSAFLUSH,&termios_buf)!=0)
+-	{
+-		perror(_("设置终端属性失败"));
+-		return -2;
+-	}
+-	
+-	return ret>0?0:1;
++/* 限制账户输入并读完过长的一项，避免余下字符被误读为后面的选项。 */
++static int readAccount(char *out)
++{
++    size_t n = 0;
++    int ch, too_long = 0;
++    if (!out) return 0;
++    do { ch = getchar(); } while (ch != EOF && isspace((unsigned char)ch));
++    while (ch != EOF && !isspace((unsigned char)ch)) {
++        if (n < ACCOUNT_SIZE-1) out[n++] = ch;
++        else too_long = 1;
++        ch = getchar();
++    }
++    out[n] = 0;
++    if (too_long || n == 0) { out[0] = 0; return 0; }
++    return 1;
++}
++
++int getpasswd(char passwd[])
++{
++    struct termios original, hidden;
++    int ret;
++    if (tcgetattr(STDIN_FILENO, &original) != 0) return -1;
++    hidden = original;
++    hidden.c_lflag &= ~ECHOFLAGS;
++    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &hidden) != 0) return -2;
++    ret = readAccount(passwd);
++    /* 恢复调用前的终端状态，不能强行开启原本关闭的回显。 */
++    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &original) != 0) return -2;
++    return ret ? 0 : 1;
+ }
+ 
+ 
+@@ -240,11 +230,11 @@
+ 	{
+ 		saveFlag = 1;
+ 		printf(_("?? 请输入用户名: "));
+-		scanf("%s", userName);
++		if (!readAccount(userName)) exit(EXIT_FAILURE);
+ 		
+ 		printf(_("?? 请输入密码: "));
+ 		//scanf("%s", password);
+-		getpasswd(password);
++		if (getpasswd(password) != 0) exit(EXIT_FAILURE);
+ 		//last newline eaten by scanf in getpasswd
+ 		printf("\n");
+ 		

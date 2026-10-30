@@ -1,0 +1,793 @@
+--- a/configparse.c
++++ b/configparse.c
+@@ -1,6 +1,13 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <ctype.h>
++#ifdef WIN32
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#else
++#include <arpa/inet.h>
++#endif
+ #include "configparse.h"
+ #include "debug.h"
+ 
+@@ -13,169 +20,140 @@
+ char bind_ip[20];
+ struct config drcom_config;
+ 
+-static int read_d_config(char *buf, int size);
+-static int read_p_config(char *buf, int size);
++static char *trim(char *s)
++{
++    char *end;
++    while (isspace((unsigned char)*s)) ++s;
++    end = s + strlen(s);
++    while (end > s && isspace((unsigned char)end[-1])) --end;
++    *end = '\0';
++    return s;
++}
+ 
+-int config_parse(char *filepath) {
+-    FILE *ptr_file;
+-    char buf[100];
+-
+-    ptr_file = fopen(filepath, "r");
+-    if (!ptr_file) {
+-        printf("Failed to read config file.\n");
+-        exit(1);
+-    }
+-
+-    while (fgets(buf, sizeof(buf), ptr_file)) {
+-        if (strcmp(mode, "dhcp") == 0) {
+-            read_d_config(buf, sizeof(buf));
+-        } else if (strcmp(mode, "pppoe") == 0) {
+-            read_p_config(buf, sizeof(buf));
+-        }
+-    }
+-    if (verbose_flag) {
+-        printf("\n\n");
+-    }
+-    fclose(ptr_file);
+-
++static int copy_value(char *dst, size_t capacity, const char *value)
++{
++    size_t n = strlen(value);
++    if (n >= capacity) return -1;
++    memcpy(dst, value, n + 1);
+     return 0;
+ }
+ 
+-static int read_d_config(char *buf, int size) {
+-    if (verbose_flag) {
+-        printf("%s", buf);
++static int hex_digit(char c)
++{
++    if (c >= '0' && c <= '9') return c - '0';
++    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
++    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
++    return -1;
++}
++
++static int hex_bytes(unsigned char *out, size_t n, const char *s, int mac)
++{
++    size_t i;
++    if (mac) {
++        if (strlen(s) != 2 + n * 2 || s[0] != '0' || (s[1] != 'x' && s[1] != 'X')) return -1;
++        s += 2;
++    } else if (strlen(s) != n * 4) return -1;
++    for (i = 0; i < n; ++i) {
++        int a, b;
++        if (!mac) {
++            if (s[0] != '\\' || s[1] != 'x') return -1;
++            s += 2;
++        }
++        a = hex_digit(s[0]); b = hex_digit(s[1]);
++        if (a < 0 || b < 0) return -1;
++        out[i] = (unsigned char)((a << 4) | b);
++        s += 2;
+     }
+-
+-    char *delim = " ='\r\n";
+-    char *delim2 = "\\x";
+-    char *key;
+-    char *value;
+-    if (strlen(key = strtok(buf, delim))) {
+-        value = strtok(NULL, delim);
+-    }
+-    drcom_config.keepalive1_mod = 0;
+-
+-    if (strcmp(key, "server") == 0) {
+-        strcpy(drcom_config.server, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.server));
+-    } else if (strcmp(key, "username") == 0) {
+-        strcpy(drcom_config.username, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.username));
+-    } else if (strcmp(key, "password") == 0) {
+-        strcpy(drcom_config.password, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.password));
+-    } else if (strcmp(key, "CONTROLCHECKSTATUS") == 0) {
+-        value = strtok(value, delim2);
+-        sscanf(value, "%02hhx", &drcom_config.CONTROLCHECKSTATUS);
+-        DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.CONTROLCHECKSTATUS));
+-    } else if (strcmp(key, "ADAPTERNUM") == 0) {
+-        value = strtok(value, delim2);
+-        sscanf(value, "%02hhx", &drcom_config.ADAPTERNUM);
+-        DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.ADAPTERNUM));
+-    } else if (strcmp(key, "host_ip") == 0) {
+-        strcpy(drcom_config.host_ip, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.host_ip));
+-    } else if (strcmp(key, "IPDOG") == 0) {
+-        value = strtok(value, delim2);
+-        sscanf(value, "%02hhx", &drcom_config.IPDOG);
+-        DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.IPDOG));
+-    } else if (strcmp(key, "host_name") == 0) {
+-        strcpy(drcom_config.host_name, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.host_name));
+-    } else if (strcmp(key, "PRIMARY_DNS") == 0) {
+-        strcpy(drcom_config.PRIMARY_DNS, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.PRIMARY_DNS));
+-    } else if (strcmp(key, "dhcp_server") == 0) {
+-        strcpy(drcom_config.dhcp_server, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.dhcp_server));
+-    } else if (strcmp(key, "AUTH_VERSION") == 0) {
+-        char *v1 = strtok(value, delim2);
+-        char *v2 = strtok(NULL, delim2);
+-        sscanf(v1, "%02hhx", v1);
+-        sscanf(v2, "%02hhx", v2);
+-        memcpy(&drcom_config.AUTH_VERSION[0], v1, 1);
+-        memcpy(&drcom_config.AUTH_VERSION[1], v2, 1);
+-        DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.AUTH_VERSION[0]));
+-        DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.AUTH_VERSION[1]));
+-    } else if (strcmp(key, "mac") == 0) {
+-        char *delim3 = "x";
+-        // strsep(&value, delim3);
+-        value = strtok(value, delim3);
+-        value = strtok(NULL, delim3);
+-        sscanf(value, "%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx",
+-               &drcom_config.mac[0],
+-               &drcom_config.mac[1],
+-               &drcom_config.mac[2],
+-               &drcom_config.mac[3],
+-               &drcom_config.mac[4],
+-               &drcom_config.mac[5]);
+-#ifdef DEBUG
+-        printf("[PARSER_DEBUG]0x");
+-        for (int i = 0; i < 6; i++) {
+-            printf("%02x", drcom_config.mac[i]);
+-        }
+-        printf("\n");
+-#endif
+-    } else if (strcmp(key, "host_os") == 0) {
+-        strcpy(drcom_config.host_os, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.host_os));
+-    } else if (strcmp(key, "KEEP_ALIVE_VERSION") == 0) {
+-        char *v1 = strtok(value, delim2);
+-        char *v2 = strtok(NULL, delim2);
+-        sscanf(v1, "%02hhx", v1);
+-        sscanf(v2, "%02hhx", v2);
+-        memcpy(&drcom_config.KEEP_ALIVE_VERSION[0], v1, 1);
+-        memcpy(&drcom_config.KEEP_ALIVE_VERSION[1], v2, 1);
+-        DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.KEEP_ALIVE_VERSION[0]));
+-        DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.KEEP_ALIVE_VERSION[1]));
+-    } else if (strcmp(key, "ror_version") == 0) {
+-        if (strcmp(value, "True") == 0) {
+-            drcom_config.ror_version = 1;
+-        } else  {
+-            drcom_config.ror_version = 0;
+-        }
+-        DEBUG_PRINT(("\n[PARSER_DEBUG]\n%d\n", drcom_config.ror_version));
+-    } else if (strcmp(key, "keepalive1_mod") == 0) {
+-        if (strcmp(value, "True") == 0) {
+-            drcom_config.keepalive1_mod = 1;
+-        } else  {
+-            drcom_config.keepalive1_mod = 0;
+-        }
+-        DEBUG_PRINT(("\n[PARSER_DEBUG]\n%d\n", drcom_config.keepalive1_mod));
+-    } else {
+-        return 1;
+-    }
+-
+     return 0;
+ }
+ 
+-static int read_p_config(char *buf, int size) {
+-    if (verbose_flag) {
+-        printf("%s", buf);
++static int bool_value(int *dst, const char *s)
++{
++    if (!strcmp(s, "True") || !strcmp(s, "1")) *dst = 1;
++    else if (!strcmp(s, "False") || !strcmp(s, "0")) *dst = 0;
++    else return -1;
++    return 0;
++}
++
++static int ip_value(char *dst, size_t capacity, const char *s)
++{
++    struct in_addr parsed;
++    if (inet_pton(AF_INET, s, &parsed) != 1) return -1;
++    return copy_value(dst, capacity, s);
++}
++
++static int field(struct config *c, const char *key, const char *value)
++{
++#define TEXT(k) if (!strcmp(key, #k)) return copy_value(c->k, sizeof(c->k), value)
++#define IP(k) if (!strcmp(key, #k)) return ip_value(c->k, sizeof(c->k), value)
++#define BYTE(k) if (!strcmp(key, #k)) return hex_bytes(&c->k, 1, value, 0)
++#define BYTES(k) if (!strcmp(key, #k)) return hex_bytes(c->k, sizeof(c->k), value, 0)
++    IP(server);
++    if (!strcmp(mode,"pppoe")) {
++        BYTE(pppoe_flag); BYTE(keep_alive2_flag);
++        return 0;
+     }
++    TEXT(username); TEXT(password); TEXT(host_name); TEXT(host_os);
++    IP(host_ip); IP(PRIMARY_DNS); IP(dhcp_server);
++    BYTE(CONTROLCHECKSTATUS); BYTE(ADAPTERNUM); BYTE(IPDOG);
++    BYTES(AUTH_VERSION); BYTES(KEEP_ALIVE_VERSION);
++    if (!strcmp(key, "mac")) return hex_bytes(c->mac, sizeof(c->mac), value, 1);
++    if (!strcmp(key, "ror_version")) return bool_value(&c->ror_version, value);
++    if (!strcmp(key, "keepalive1_mod")) return bool_value(&c->keepalive1_mod, value);
++    /* 保留通用配置里其他客户端专用字段的兼容性。 */
++    return 0;
++#undef TEXT
++#undef IP
++#undef BYTE
++#undef BYTES
++}
+ 
+-    char *delim = " ='\r\n";
+-    char *delim2 = "\\x";
+-    char *key;
+-    char *value;
+-    if (strlen(key = strtok(buf, delim))) {
+-        value = strtok(NULL, delim);
++int config_parse(char *filepath)
++{
++    FILE *fp;
++    char line[1024];
++    unsigned lineno = 0;
++    int bad = 0;
++    struct config next = {0};
++    if (!filepath || (strcmp(mode,"dhcp") && strcmp(mode,"pppoe"))) return 1;
++    fp = fopen(filepath,"r");
++    if (!fp) { perror("config"); return 1; }
++    strcpy(next.host_ip,"0.0.0.0");
++    strcpy(next.PRIMARY_DNS,"0.0.0.0");
++    strcpy(next.dhcp_server,"0.0.0.0");
++    while (fgets(line,sizeof(line),fp)) {
++        char *key, *value, *end;
++        ++lineno;
++        if (!strchr(line,'\n') && !feof(fp)) { bad=1; break; }
++        key=trim(line);
++        if (!*key || *key=='#' || *key==';') continue;
++        value=strchr(key,'=');
++        if (!value) { bad=1; break; }
++        *value++='\0'; key=trim(key); value=trim(value);
++        if (!*key || !*value) { bad=1; break; }
++        if (*value=='\'' || *value=='"') {
++            char quote=*value++;
++            end=strchr(value,quote);
++            if (!end) { bad=1; break; }
++            *end++='\0'; end=trim(end);
++            if (*end && *end!='#' && *end!=';') { bad=1; break; }
++        } else {
++            end=strpbrk(value,"#;");
++            if (end) *end='\0';
++            value=trim(value);
++        }
++        if (field(&next,key,value)) { bad=1; break; }
+     }
+-
+-    if (strcmp(key, "server") == 0) {
+-        strcpy(drcom_config.server, value);
+-        DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.server));
+-    } else if (strcmp(key, "pppoe_flag") == 0) {
+-        value = strtok(value, delim2);
+-        sscanf(value, "%02hhx", &drcom_config.pppoe_flag);
+-        DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.pppoe_flag));
+-    } else if (strcmp(key, "keep_alive2_flag") == 0) {
+-        value = strtok(value, delim2);
+-        sscanf(value, "%02hhx", &drcom_config.keep_alive2_flag);
+-        DEBUG_PRINT(("\n[PARSER_DEBUG]0x%02x\n", drcom_config.keep_alive2_flag));
+-    } else {
++    if (ferror(fp)) bad=1;
++    fclose(fp);
++    if (!next.server[0]) bad=1;
++    if (!strcmp(mode,"dhcp") && (!next.username[0] || !next.password[0] ||
++        (next.ror_version && strlen(next.password)>16))) bad=1;
++    if (bad) {
++        /* 不把账户密码或整行内容写入错误日志。校验失败不覆盖已有配置。 */
++        fprintf(stderr,"Invalid config near line %u\n",lineno);
+         return 1;
+     }
+-
++    drcom_config=next;
+     return 0;
+-}
+\ No newline at end of file
++}
+--- /dev/null
++++ b/recvchecked.h
+@@ -0,0 +1,25 @@
++#ifndef DOGCOM_RECV_CHECKED_H
++#define DOGCOM_RECV_CHECKED_H
++#include <errno.h>
++
++/* 收包地址单独保存，不能让回复覆盖配置的认证服务器；长度先于字段读取。 */
++static int dogcom_recv(int fd, unsigned char *buf, size_t capacity,
++                      const struct sockaddr_in *expected, size_t minimum)
++{
++    struct sockaddr_in peer = {0};
++    socklen_t size = sizeof(peer);
++    int n = recvfrom(fd, buf, capacity, 0, (struct sockaddr *)&peer, &size);
++    if (n < 0) return n;
++    if (size < sizeof(peer) || peer.sin_family != expected->sin_family ||
++        peer.sin_port != expected->sin_port ||
++        peer.sin_addr.s_addr != expected->sin_addr.s_addr || (size_t)n < minimum) {
++#ifdef WIN32
++        WSASetLastError(WSAEMSGSIZE);
++#else
++        errno = EMSGSIZE;
++#endif
++        return -1;
++    }
++    return n;
++}
++#endif
+--- a/keepalive.c
++++ b/keepalive.c
+@@ -17,18 +17,20 @@
+ #include "configparse.h"
+ #include "auth.h"
+ #include "debug.h"
++#include "recvchecked.h"
+ 
+ int keepalive_1(int sockfd, struct sockaddr_in addr, unsigned char seed[], unsigned char auth_information[]) {
++    int recv_len;
+     if (drcom_config.keepalive1_mod) {
+         unsigned char keepalive_1_packet1[8] = {0x07, 0x01, 0x08, 0x00, 0x01, 0x00, 0x00, 0x00};
+         unsigned char recv_packet1[1024], keepalive_1_packet2[38], recv_packet2[1024];
+         memset(keepalive_1_packet2, 0, 38);
+         sendto(sockfd, keepalive_1_packet1, 8, 0, (struct sockaddr *)&addr, sizeof(addr));
+         if (verbose_flag) {
+-            print_packet("[Keepalive1 sent] ", keepalive_1_packet1, 42);
++            print_packet("[Keepalive1 sent] ", keepalive_1_packet1, sizeof(keepalive_1_packet1));
+         }
+         if (logging_flag) {
+-            logging("[Keepalive1 sent] ", keepalive_1_packet1, 42);
++            logging("[Keepalive1 sent] ", keepalive_1_packet1, sizeof(keepalive_1_packet1));
+         }
+ #ifdef TEST
+         printf("[TEST MODE]IN TEST MODE, PASS\n");
+@@ -36,7 +38,7 @@
+ #endif
+         socklen_t addrlen = sizeof(addr);
+         while(1) {
+-            if (recvfrom(sockfd, recv_packet1, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++            if ((recv_len = dogcom_recv(sockfd, recv_packet1, sizeof(recv_packet1), &addr, 1)) < 0) {
+ #ifdef WIN32
+                 get_lasterror("Failed to recv data");
+ #else
+@@ -45,13 +47,14 @@
+                 return 1;
+             } else {
+                 if (verbose_flag) {
+-                    print_packet("[Keepalive1 challenge_recv] ", recv_packet1, 100);
++                    print_packet("[Keepalive1 challenge_recv] ", recv_packet1, recv_len);
+                 }
+                 if (logging_flag) {
+-                    logging("[Keepalive1 challenge_recv] ", recv_packet1, 100);
++                    logging("[Keepalive1 challenge_recv] ", recv_packet1, recv_len);
+                 }
+ 
+                 if (recv_packet1[0] == 0x07) {
++                    if (recv_len < 12) return 1;
+                     break;
+                 } else if (recv_packet1[0] == 0x4d) {
+                     DEBUG_PRINT(("Get notice packet.\n"));
+@@ -76,9 +79,9 @@
+         keepalive_1_packet2[36] = rand() & 0xff;
+         keepalive_1_packet2[37] = rand() & 0xff;
+ 
+-        sendto(sockfd, keepalive_1_packet2, 42, 0, (struct sockaddr *)&addr, sizeof(addr));
+-
+-        if (recvfrom(sockfd, recv_packet2, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++        sendto(sockfd, keepalive_1_packet2, sizeof(keepalive_1_packet2), 0, (struct sockaddr *)&addr, sizeof(addr));
++
++        if ((recv_len = dogcom_recv(sockfd, recv_packet2, sizeof(recv_packet2), &addr, 1)) < 0) {
+ #ifdef WIN32
+             get_lasterror("Failed to recv data");
+ #else
+@@ -87,10 +90,10 @@
+             return 1;
+         } else {
+             if (verbose_flag) {
+-                print_packet("[Keepalive1 recv] ", recv_packet2, 100);
++                print_packet("[Keepalive1 recv] ", recv_packet2, recv_len);
+             }
+             if (logging_flag) {
+-                logging("[Keepalive1 recv] ", recv_packet2, 100);
++                logging("[Keepalive1 recv] ", recv_packet2, recv_len);
+             }
+ 
+             if (recv_packet2[0] != 0x07) {
+@@ -131,7 +134,7 @@
+ 
+         socklen_t addrlen = sizeof(addr);
+         while(1) {
+-            if (recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++            if ((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 1)) < 0) {
+ #ifdef WIN32
+                 get_lasterror("Failed to recv data");
+ #else
+@@ -140,10 +143,10 @@
+                 return 1;
+             } else {
+                 if (verbose_flag) {
+-                    print_packet("[Keepalive1 recv] ", recv_packet, 100);
++                    print_packet("[Keepalive1 recv] ", recv_packet, recv_len);
+                 }
+                 if (logging_flag) {
+-                    logging("[Keepalive1 recv] ", recv_packet, 100);
++                    logging("[Keepalive1 recv] ", recv_packet, recv_len);
+                 }
+ 
+                 if (recv_packet[0] == 0x07) {
+@@ -237,6 +240,7 @@
+ }
+ 
+ int keepalive_2(int sockfd, struct sockaddr_in addr, int *keepalive_counter, int *first, int *encrypt_type) {
++    int recv_len;
+     unsigned char keepalive_2_packet[40], recv_packet[1024], tail[4];
+     socklen_t addrlen = sizeof(addr);
+ 
+@@ -261,7 +265,7 @@
+         if (logging_flag) {
+             logging("[Keepalive2_file sent] ", keepalive_2_packet, 40);
+         }
+-        if (recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++        if ((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 3)) < 0) {
+ #ifdef WIN32
+             get_lasterror("Failed to recv data");
+ #else
+@@ -270,10 +274,10 @@
+             return 1;
+         }
+         if (verbose_flag) {
+-            print_packet("[Keepalive2_file recv] ", recv_packet, 40);
++            print_packet("[Keepalive2_file recv] ", recv_packet, recv_len);
+         }
+         if (logging_flag) {
+-            logging("[Keepalive2_file recv] ", recv_packet, 40);
++            logging("[Keepalive2_file recv] ", recv_packet, recv_len);
+         }
+ 
+         if (recv_packet[0] == 0x07) {
+@@ -317,7 +321,7 @@
+     memcpy(tail, test, 4);
+     print_packet("[TEST MODE]<PREP TAIL> ", tail, 4);
+ #else
+-    if (recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++    if ((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 20)) < 0) {
+ #ifdef WIN32
+         get_lasterror("Failed to recv data");
+ #else
+@@ -326,10 +330,10 @@
+         return 1;
+     }
+     if (verbose_flag) {
+-        print_packet("[Keepalive2_B recv] ", recv_packet, 40);
++        print_packet("[Keepalive2_B recv] ", recv_packet, recv_len);
+     }
+     if (logging_flag) {
+-        logging("[Keepalive2_B recv] ", recv_packet, 40);
++        logging("[Keepalive2_B recv] ", recv_packet, recv_len);
+     }
+ 
+     if (recv_packet[0] == 0x07) {
+@@ -371,7 +375,7 @@
+     exit(0);
+ #endif
+ 
+-    if (recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++    if ((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 3)) < 0) {
+ #ifdef WIN32
+         get_lasterror("Failed to recv data");
+ #else
+@@ -380,10 +384,10 @@
+         return 1;
+     }
+     if (verbose_flag) {
+-        print_packet("[Keepalive2_D recv] ", recv_packet, 40);
++        print_packet("[Keepalive2_D recv] ", recv_packet, recv_len);
+     }
+     if (logging_flag) {
+-        logging("[Keepalive2_D recv] ", recv_packet, 40);
++        logging("[Keepalive2_D recv] ", recv_packet, recv_len);
+     }
+ 
+     if (recv_packet[0] == 0x07) {
+--- a/auth.c
++++ b/auth.c
+@@ -21,11 +21,13 @@
+ #include "configparse.h"
+ #include "keepalive.h"
+ #include "debug.h"
++#include "recvchecked.h"
+ 
+ #define BIND_PORT 61440
+ #define DEST_PORT 61440
+ 
+ int dhcp_challenge(int sockfd, struct sockaddr_in addr, unsigned char seed[]) {
++    int recv_len;
+     unsigned char challenge_packet[20], recv_packet[1024];
+     memset(challenge_packet, 0, 20);
+     challenge_packet[0] = 0x01;
+@@ -50,7 +52,7 @@
+ #endif
+ 
+     socklen_t addrlen = sizeof(addr);
+-    if (recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++    if ((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 8)) < 0) {
+ #ifdef WIN32
+         get_lasterror("Failed to recv data");
+ #else
+@@ -60,10 +62,10 @@
+     }
+ 
+     if (verbose_flag) {
+-        print_packet("[Challenge recv] ", recv_packet, 76);
++        print_packet("[Challenge recv] ", recv_packet, recv_len);
+     }
+     if (logging_flag) {
+-        logging("[Challenge recv] ", recv_packet, 76);
++        logging("[Challenge recv] ", recv_packet, recv_len);
+     }
+ 
+     if (recv_packet[0] != 0x02) {
+@@ -80,12 +82,13 @@
+ }
+ 
+ int dhcp_login(int sockfd, struct sockaddr_in addr, unsigned char seed[], unsigned char auth_information[], int try_JLUversion) {
++    int recv_len;
+     unsigned int login_packet_size;
+     unsigned int length_padding = 0;
+     int JLU_padding = 0;
+ 
+     if (strlen(drcom_config.password) > 8) {
+-        length_padding = strlen(drcom_config.password) - 8 + (length_padding%2);
++        length_padding = strlen(drcom_config.password) - 8 + (strlen(drcom_config.password) % 2);
+         if (try_JLUversion) {
+             printf("Start JLU mode.\n");
+             if (logging_flag) {
+@@ -102,7 +105,7 @@
+     } else {
+         login_packet_size = 330;
+     }
+-    unsigned char login_packet[login_packet_size], recv_packet[1024], MD5A[16], MACxorMD5A[6], MD5B[16], checksum1[8], checksum2[4];
++    unsigned char login_packet[login_packet_size], recv_packet[1024], MD5A[16], MACxorMD5A[6], MD5B[16], checksum1[16], checksum2[4];
+     memset(login_packet, 0, login_packet_size);
+     memset(recv_packet, 0, 100);
+ 
+@@ -271,7 +274,7 @@
+ #endif
+ 
+     socklen_t addrlen = sizeof(addr);
+-    if (recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++    if ((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 1)) < 0) {
+ #ifdef WIN32
+         get_lasterror("Failed to recv data");
+ #else
+@@ -280,17 +283,18 @@
+         return 1;
+     }
+ 
++    if (recv_packet[0] == 0x04 && recv_len < 39) return 1;
+     if (recv_packet[0] != 0x04) {
+         if (verbose_flag) {
+-            print_packet("[login recv] ", recv_packet, 100);
++            print_packet("[login recv] ", recv_packet, recv_len);
+         }
+         printf("<<< Login failed >>>\n");
+         if (logging_flag) {
+-            logging("[login recv] ", recv_packet, 100);
++            logging("[login recv] ", recv_packet, recv_len);
+             logging("<<< Login failed >>>", NULL, 0);
+         }
+         char err_msg[256];
+-        if (recv_packet[0] == 0x05) {
++        if (recv_packet[0] == 0x05 && recv_len >= 5) {
+             switch (recv_packet[4]) {
+                 case CHECK_MAC:
+                     strcpy(err_msg, "[Tips] Someone is using this account with wired.");
+@@ -337,21 +341,22 @@
+         return 1;
+     } else {
+         if (verbose_flag) {
+-            print_packet("[login recv] ", recv_packet, 100);
++            print_packet("[login recv] ", recv_packet, recv_len);
+         }
+         printf("<<< Logged in >>>\n");
+         if (logging_flag) {
+-            logging("[login recv] ", recv_packet, 100);
++            logging("[login recv] ", recv_packet, recv_len);
+             logging("<<< Logged in >>>", NULL, 0);
+         }
+     }
+ 
++    if (recv_len < 39) return 1;
+     memcpy(auth_information, &recv_packet[23], 16);
+ #ifdef DEBUG
+     print_packet("<GET AUTH_INFORMATION> ", auth_information, 16);
+ #endif
+ 
+-    if(recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) >= 0) {
++    if((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 1)) >= 0) {
+         DEBUG_PRINT(("Get notice packet."));
+     }
+ 
+@@ -359,6 +364,7 @@
+ }
+ 
+ int pppoe_challenge(int sockfd, struct sockaddr_in addr, int *pppoe_counter, unsigned char seed[], unsigned char sip[], int *encrypt_mode) {
++    int recv_len;
+     unsigned char challenge_packet[8], recv_packet[1024];
+     memset(challenge_packet, 0, 8);
+     unsigned char challenge_tmp[5] = {0x07, 0x00, 0x08, 0x00, 0x01};
+@@ -387,7 +393,7 @@
+ #endif
+ 
+     socklen_t addrlen = sizeof(addr);
+-    if (recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++    if ((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 30)) < 0) {
+ #ifdef WIN32
+         get_lasterror("Failed to recv data");
+ #else
+@@ -397,10 +403,10 @@
+     }
+ 
+     if (verbose_flag) {
+-        print_packet("[Challenge recv] ", recv_packet, 32);
++        print_packet("[Challenge recv] ", recv_packet, recv_len);
+     }
+     if (logging_flag) {
+-        logging("[Challenge recv] ", recv_packet, 32);
++        logging("[Challenge recv] ", recv_packet, recv_len);
+     }
+ 
+     if (recv_packet[0] != 0x07) {
+@@ -430,6 +436,7 @@
+ }
+ 
+ int pppoe_login(int sockfd, struct sockaddr_in addr, int *pppoe_counter, unsigned char seed[], unsigned char sip[], int *login_first, int *encrypt_mode, int *encrypt_type) {
++    int recv_len;
+     unsigned char login_packet[96], recv_packet[1024];
+     memset(login_packet, 0, 96);
+     unsigned char login_tmp[5] = {0x07, 0x00, 0x60, 0x00, 0x03};
+@@ -492,7 +499,7 @@
+ #endif
+ 
+     socklen_t addrlen = sizeof(addr);
+-    if (recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) < 0) {
++    if ((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 1)) < 0) {
+ #ifdef WIN32
+         get_lasterror("Failed to recv data");
+ #else
+@@ -502,10 +509,10 @@
+     }
+ 
+     if (verbose_flag) {
+-        print_packet("[PPPoE_login recv] ", recv_packet, 48);
++        print_packet("[PPPoE_login recv] ", recv_packet, recv_len);
+     }
+     if (logging_flag) {
+-        logging("[PPPoE_login recv] ", recv_packet, 48);
++        logging("[PPPoE_login recv] ", recv_packet, recv_len);
+     }
+ 
+     if (recv_packet[0] != 0x07) {
+@@ -513,7 +520,7 @@
+         return 1;
+     }
+ 
+-    if(recvfrom(sockfd, recv_packet, 1024, 0, (struct sockaddr *)&addr, &addrlen) >= 0) {
++    if((recv_len = dogcom_recv(sockfd, recv_packet, sizeof(recv_packet), &addr, 1)) >= 0) {
+         DEBUG_PRINT(("Get notice packet."));
+     }
+ 
+@@ -720,6 +727,7 @@
+ void logging(char msg[10], unsigned char *packet, int length) {
+     FILE *ptr_file;
+     ptr_file = fopen(log_path, "a");
++    if (!ptr_file) { perror("log"); return; }
+ 
+     char *wday[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+     time_t timep;
+--- a/main.c
++++ b/main.c
+@@ -4,9 +4,13 @@
+ #include <getopt.h>
+ #include "configparse.h"
+ #include "auth.h"
++#ifndef WIN32
++#include <arpa/inet.h>
++#endif
+ 
+ #ifdef linux
+ #include <limits.h>
++#include <unistd.h>
+ #include "daemon.h"
+ #include "eapol.h"
+ #include "libs/common.h"
+@@ -24,7 +28,7 @@
+         print_help(1);
+     }
+ 
+-    char *file_path;
++    char *file_path = NULL;
+ 
+     while (1) {
+         static const struct option long_options[] = {
+@@ -70,8 +74,10 @@
+ #endif
+ #ifdef linux
+                     char path_c[PATH_MAX];
+-                    realpath(optarg, path_c);
++                    if (!realpath(optarg, path_c)) { perror("config path"); return 1; }
++                    free(file_path);
+                     file_path = strdup(path_c);
++                    if (!file_path) return 1;
+ #else
+                     file_path = optarg;
+ #endif
+@@ -80,6 +86,9 @@
+ #endif
+                 break;
+             case 'b':
++                if (strlen(optarg) >= sizeof(bind_ip) || inet_addr(optarg) == INADDR_NONE) {
++                    fprintf(stderr,"Invalid bind IPv4 address\n"); return 1;
++                }
+                 strcpy(bind_ip, optarg);
+                 break;
+             case 'l':
+@@ -88,8 +97,16 @@
+ #endif
+ #ifdef linux
+                     char path_l[PATH_MAX];
+-                    realpath(optarg, path_l);
++                    if (optarg[0] == '/') {
++                        if (strlen(optarg) >= sizeof(path_l)) return 1;
++                        strcpy(path_l,optarg);
++                    } else {
++                        char cwd[PATH_MAX];
++                        if (!getcwd(cwd,sizeof(cwd)) || snprintf(path_l,sizeof(path_l),"%s/%s",cwd,optarg) >= sizeof(path_l)) return 1;
++                    }
++                    free(log_path);
+                     log_path = strdup(path_l);
++                    if (!log_path) return 1;
+ #else
+                     log_path = optarg;
+ #endif
+@@ -124,7 +141,7 @@
+     }
+ 
+ #ifndef __APPLE__
+-    if (mode != NULL && file_path != NULL) {
++    if (mode[0] && file_path != NULL) {
+ #endif
+ #ifdef linux
+         if (daemon_flag) {
+@@ -152,7 +169,10 @@
+             if (strlen(bind_ip) == 0) {
+                 memcpy(bind_ip, default_bind_ip, sizeof(default_bind_ip));
+             }
+-            dogcom(5);
++            int result = dogcom(5);
++            free(file_path);
++            free(log_path);
++            return result;
+         } else {
+             return 1;
+         }

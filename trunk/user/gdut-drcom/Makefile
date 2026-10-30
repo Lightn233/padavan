@@ -1,26 +1,28 @@
-SRC_NAME = gdut-drcom-1.6.8
-SRC_URL = https://github.com/chenhaowen01/gdut-drcom/archive/1.6.8.tar.gz
+include $(ROOTDIR)/rules.mk
 
-THISDIR = $(shell pwd)
+PKG_NAME:=gdut-drcom
+PKG_VERSION:=1.6.8
+PKG_SOURCE:=gdut-drcom-c71eadbb802c08b9265b830f61d4c91530929ae3.tar.gz
+PKG_HASH:=065fc9533789a62d4b8fa7b01d113b6e689c3e17c694f8387b5a00aeda214e10
+PKG_SOURCE_URL:=https://codeload.github.com/xnhw01/gdut-drcom/tar.gz
+PKG_SOURCE_URL_FILE:=c71eadbb802c08b9265b830f61d4c91530929ae3
 
-all: download_test extract_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME)/src
+include $(INCLUDE_DIR)/package.mk
 
-download_test:
-	( if [ ! -f $(SRC_NAME).tar.gz ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.gz $(SRC_URL); \
-	fi )
+define Build/Prepare
+	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
+	tar -xf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
+	$(Build/Patch)
+endef
 
-extract_test:
-	( if [ ! -d $(SRC_NAME) ]; then \
-		tar zxf $(SRC_NAME).tar.gz; \
-	fi )
+define Build/Compile
+	$(MAKE) -C $(PKG_BUILD_DIR)/src -j$(HOST_NCPU) CC="$(TARGET_CC)" \
+		CFLAGS="$(TARGET_CFLAGS) -std=gnu11 -Wall -DVERSION=$(PKG_VERSION)" LIBS="$(TARGET_LDFLAGS)"
+endef
 
-clean:
-	( if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) clean ; \
-	fi )
+$(eval $(call BuildPackage,gdut-drcom))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
 
-romfs:
-	$(ROMFSINST) -p +x $(THISDIR)/$(SRC_NAME)/src/gdut-drcom /usr/bin/gdut-drcom
-	$(ROMFSINST) -d $(THISDIR)/$(SRC_NAME)/src/gdut-drcom.conf /etc_ro/gdut-drcom/gdut-drcom.conf
+romfs: $(STAMP_BUILT)
+	$(ROMFSINST) $(PKG_BUILD_DIR)/src/gdut-drcom /usr/bin/gdut-drcom
+	$(ROMFSINST) -d $(PKG_BUILD_DIR)/src/gdut-drcom.conf /etc_ro/gdut-drcom/gdut-drcom.conf

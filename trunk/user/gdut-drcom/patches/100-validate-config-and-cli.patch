@@ -1,0 +1,280 @@
+--- a/src/config.c
++++ b/src/config.c
+@@ -5,6 +5,8 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <getopt.h>
++#include <arpa/inet.h>
++#include <errno.h>
+ 
+ struct option_s {
+     char key[256];
+@@ -19,18 +21,24 @@
+ /* extern variables */
+ 
+ /* locale functions */
+-static int parse_line(char *buf, int size);
++static int parse_line(struct config_s *cfg, char *buf);
++static int apply_option(struct config_s *cfg, const char *key, const char *value);
+ static void strstrip(char *s, char *chars);
+ /* locale functions */
+ 
+ void set_remote_ip(char* ip, int len)
+ {
+-    memcpy(drcom_config.remote_ip, ip, len);
++    if (!ip || len <= 0 || (size_t)len >= sizeof(drcom_config.remote_ip)) return;
++    char value[sizeof(drcom_config.remote_ip)];
++    memcpy(value, ip, len); value[len] = 0;
++    set_config_option("remote_ip", value);
+ }
+ 
+ void set_keep_alive1_flag(char* flag, int len)
+ {
+-    sscanf(flag, "%02hhx", &drcom_config.keep_alive1_flag);
++    if (!flag || len <= 0 || len > 4) return;
++    char value[5]; memcpy(value, flag, len); value[len] = 0;
++    set_config_option("keep_alive1_flag", value);
+ }
+ 
+ void set_enable_crypt(int enable)
+@@ -57,109 +65,94 @@
+     }
+ }
+ 
+-int parse_config(char *conf_file_name)
++/* 所有整数均要求完整且在范围内，不能把错误值截断成有效配置。 */
++static int parse_number(const char *value, int base, unsigned long max, unsigned long *out)
+ {
+-//    char conf_file_name[256] = "/etc/gdut-drcom.conf";
+-
+-    char line_buf[1024];
+-
+-    FILE *fp = fopen(conf_file_name, "r");
+-    if (fp == NULL)
+-    {
+-        fprintf(stderr, "open %s failed!\n", conf_file_name);
+-        fflush(stderr);
+-        exit(-1);
+-    }
+-
+-    while(!feof(fp))
+-    {
+-        memset(line_buf, 0, sizeof(line_buf));
+-        if (fgets(line_buf, sizeof(line_buf)-1, fp) == NULL)
+-        {
+-            continue;
+-        }
+-        if (strlen(line_buf) > 0)
+-        {
+-            parse_line(line_buf, sizeof(line_buf));
+-        }
+-    }
+-    fclose(fp);
+-
++    char *end;
++    if (!value || !*value || value[0] == '-' || value[0] == '+') return -1;
++    errno = 0;
++    unsigned long number = strtoul(value, &end, base);
++    if (errno || *end || number > max) return -1;
++    *out = number;
+     return 0;
+ }
+ 
+-static int parse_line(char *buf, int size)
++static int apply_option(struct config_s *cfg, const char *key, const char *value)
+ {
+-    char *p;
+-    struct option_s opt = {{0}};
++    unsigned long number;
++    if (!key || !value) return -1;
++    if (!strcmp(key, "remote_ip")) {
++        struct in_addr address;
++        size_t len = strlen(value);
++        if (!len || len >= sizeof(cfg->remote_ip) || inet_pton(AF_INET, value, &address) != 1) return -1;
++        memcpy(cfg->remote_ip, value, len + 1);
++    } else if (!strcmp(key, "remote_port")) {
++        if (parse_number(value, 10, 65535, &number) || number == 0) return -1;
++        cfg->remote_port = number;
++    } else if (!strcmp(key, "keep_alive1_flag")) {
++        if (parse_number(value, 16, 255, &number)) return -1;
++        cfg->keep_alive1_flag = number;
++    } else if (!strcmp(key, "enable_crypt")) {
++        if (parse_number(value, 10, 1, &number)) return -1;
++        cfg->enable_crypt = number;
++    }
++    /* 保留对其他版本未知配置项的兼容。 */
++    return 0;
++}
+ 
+-    //comment
+-    p = strchr(buf, '#');
+-    if (p)
+-        *p = '\0';
++int set_config_option(const char *key, const char *value)
++{
++    return apply_option(&drcom_config, key, value);
++}
+ 
+-    p = strchr(buf, '=');
+-    if (p == NULL)
+-        return 1;
+-    strncpy(opt.key, buf, p - buf);
+-    strstrip(opt.key, " \n\r\t");
+-    if ((opt.key[0]=='"' && opt.key[strlen(opt.key)-1]=='"') ||
+-            (opt.key[0]=='\'' && opt.key[strlen(opt.key)-1]=='\''))
+-        strstrip(opt.key, "\"'");
++int parse_config(char *conf_file_name)
++{
++    if (!conf_file_name) return -1;
++    FILE *fp = fopen(conf_file_name, "r");
++    if (!fp) return -1;
++    char line[1024];
++    struct config_s candidate = drcom_config;
++    int result = 0;
++    while (fgets(line, sizeof(line), fp)) {
++        if (!strchr(line, '\n') && !feof(fp)) {
++            int next = fgetc(fp);
++            if (next != EOF) { result = -1; break; }
++        }
++        if (parse_line(&candidate, line)) { result = -1; break; }
++    }
++    if (ferror(fp)) result = -1;
++    fclose(fp);
++    /* 任一行无效时保留原配置，避免只应用了一半。 */
++    if (!result) drcom_config = candidate;
++    return result;
++}
+ 
+-    strncpy(opt.value, p+1, strlen(p));
+-    strstrip(opt.value, " \r\t\n");
+-    if ((opt.value[0]=='"' && opt.value[strlen(opt.value)-1]=='"') ||
+-            (opt.value[0]=='\'' && opt.value[strlen(opt.value)-1]=='\''))
+-        strstrip(opt.value, "\"'");
+-
+-    if (strcmp(opt.key, "remote_ip") == 0)
+-    {
+-        strcpy(drcom_config.remote_ip, opt.value);
+-    }
+-    else if (strcmp(opt.key, "remote_port") == 0)
+-    {
+-        drcom_config.remote_port = atoi(opt.value);
+-    }
+-    else if(strcmp(opt.key, "keep_alive1_flag") == 0)
+-    {
+-        sscanf(opt.value, "%02hhx", &drcom_config.keep_alive1_flag);
+-    }
+-    else if (strcmp(opt.key, "enable_crypt") == 0)
+-    {
+-        if (strcmp(opt.value, "1") == 0)
+-        {
+-            drcom_config.enable_crypt = 1;
+-        }
+-        else if (strcmp(opt.value, "0") == 0)
+-        {
+-            drcom_config.enable_crypt = 0;
+-        }
+-    }
+-/*    else if(strcmp(opt.key, "keep_alive2_flag") == 0)
+-    {
+-        sscanf(opt.value, "%02hhx", &drcom_config.keep_alive2_flag);
+-    }*/
+-
+-    return 0;
++static int parse_line(struct config_s *cfg, char *buf)
++{
++    struct option_s opt = {{0}, {0}};
++    char *comment = strchr(buf, '#');
++    if (comment) *comment = 0;
++    char *equal = strchr(buf, '=');
++    if (!equal) return 0;
++    size_t key_len = equal - buf, value_len = strlen(equal + 1);
++    if (key_len >= sizeof(opt.key) || value_len >= sizeof(opt.value)) return -1;
++    memcpy(opt.key, buf, key_len);
++    memcpy(opt.value, equal + 1, value_len);
++    strstrip(opt.key, " \r\n\t");strstrip(opt.value, " \r\n\t");
++    size_t n = strlen(opt.key);
++    if (n >= 2 && ((opt.key[0] == '"' && opt.key[n-1] == '"') ||
++                  (opt.key[0] == '\'' && opt.key[n-1] == '\''))) strstrip(opt.key, "\"'");
++    n = strlen(opt.value);
++    if (n >= 2 && ((opt.value[0] == '"' && opt.value[n-1] == '"') ||
++                  (opt.value[0] == '\'' && opt.value[n-1] == '\''))) strstrip(opt.value, "\"'");
++    return apply_option(cfg, opt.key, opt.value);
+ }
+ 
+ static void strstrip(char *s, char *chars)
+ {
+-    int i;
+-    char *p;
+-    p = s;
+-    while (strchr(chars, *p)!=NULL && *p!='\0')
+-    {
+-        p++;
+-    }
+-    strcpy(s, p);
+-
+-    i = strlen(s) - 1;
+-    while (strchr(chars, s[i])!=NULL && i>=0)
+-    {
+-        s[i] = '\0';
+-        i--;
+-    }
++    size_t start = 0, end = strlen(s);
++    while (start < end && strchr(chars, s[start])) start++;
++    while (end > start && strchr(chars, s[end-1])) end--;
++    memmove(s, s + start, end - start);
++    s[end-start] = 0;
+ }
+-
+--- a/src/config.h
++++ b/src/config.h
+@@ -29,6 +29,7 @@
+ extern struct config_s drcom_config;
+ 
+ int parse_config(char * conf_file_name);
++int set_config_option(const char *key, const char *value);
+ void set_remote_ip(char *ip, int len);
+ void set_keep_alive1_flag(char *flag, int len);
+ void set_enable_crypt(int enable);
+--- a/src/gdut-drcom.c
++++ b/src/gdut-drcom.c
+@@ -10,10 +10,11 @@
+ 
+ int main(int argc, char *argv[])
+ {
+-    char conf_file_name[256] = {0};
++
+ 
+     drcom_config.log_file = stdout;
+     logger = Logger_create();
++    if (!logger) return EXIT_FAILURE;
+     logger->level = LOG_DEBUG;
+ 
+     if (argc == 1)
+@@ -46,20 +47,22 @@
+         switch (opt)
+         {
+             case 0:     //remote-ip
+-                strcpy(drcom_config.remote_ip, optarg);
++                if (set_config_option("remote_ip", optarg)) return EXIT_FAILURE;
+                 break;
+             case 1:     //remote_port
+-                drcom_config.remote_port = atoi(optarg);
++                if (set_config_option("remote_port", optarg)) return EXIT_FAILURE;
+                 break;
+             case 2:     //keep_alive1_flag
+-                sscanf(optarg, "%02hhx", &drcom_config.keep_alive1_flag);
++                if (set_config_option("keep_alive1_flag", optarg)) return EXIT_FAILURE;
+                 break;
+             case 3:
+                 drcom_config.enable_crypt = 1;
+                 break;
+             case 'c':
+-                strcpy(conf_file_name, optarg);
+-                parse_config(conf_file_name);
++                if (parse_config(optarg)) {
++                    fprintf(stderr, "配置文件无效，未开始认证。\n");
++                    return EXIT_FAILURE;
++                }
+                 break;
+             case 'h':
+                 print_help(argv[0]);

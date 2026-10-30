@@ -1,0 +1,322 @@
+--- a/src/functions.c
++++ b/src/functions.c
+@@ -43,17 +43,11 @@
+ 
+ void FillMD5Area(uint8_t digest[], uint8_t id, const char passwd[],
+ 		const uint8_t srcMD5[]) {
+-	uint8_t msgbuf[128]; // msgbuf = ‘id‘ + ‘passwd’ + ‘srcMD5’
+ 	md5_state_t md5_msg;
++	/* 分段更新摘要，密码长度不再受固定栈缓冲区限制。 */
+ 	md5_init(&md5_msg);
+-
+-	int passlen = strlen(passwd);
+-	int msglen = 1 + passlen + 16;
+-
+-	msgbuf[0] = id;
+-	memcpy(msgbuf + 1, passwd, passlen);
+-	memcpy(msgbuf + 1 + passlen, srcMD5, 16);
+-
+-	md5_append(&md5_msg, msgbuf, msglen);
++	md5_append(&md5_msg, &id, 1);
++	md5_append(&md5_msg, (const uint8_t *)passwd, strlen(passwd));
++	md5_append(&md5_msg, srcMD5, 16);
+ 	md5_finish(&md5_msg, digest);
+ }
+--- a/src/info.c
++++ b/src/info.c
+@@ -15,27 +15,17 @@
+ int skip_udp_hb = 0;
+ 
+ int hexStrToByte(const char* source, unsigned char* dest, int bufLen) {
+-	int i;
+-	unsigned char highByte, lowByte;
+-
+-	for (i = 0; source[i * 2] && source[i * 2 + 1] && (i < bufLen); i++) {
+-		highByte = toupper(source[i * 2]);
+-		lowByte = toupper(source[i * 2 + 1]);
+-
+-		if (highByte > 0x39) {
+-			highByte -= 0x37;
+-		} else {
+-			highByte -= 0x30;
+-		}
+-
+-		if (lowByte > 0x39) {
+-			lowByte -= 0x37;
+-		} else {
+-			lowByte -= 0x30;
+-		}
+-
+-		dest[i] = (highByte << 4) | lowByte;
++	size_t length = strlen(source), i;
++	if (bufLen < 0 || length % 2 || length / 2 > (size_t)bufLen) return -1;
++	/* 先检查全部输入，再写目标，避免无效版本号留下半份配置。 */
++	for (i = 0; i < length; ++i)
++		if (!isxdigit((unsigned char)source[i])) return -1;
++	for (i = 0; i < length / 2; ++i) {
++		unsigned char a = toupper((unsigned char)source[i*2]);
++		unsigned char b = toupper((unsigned char)source[i*2+1]);
++		a = a <= '9' ? a-'0' : a-'A'+10;
++		b = b <= '9' ? b-'0' : b-'A'+10;
++		dest[i] = (a << 4) | b;
+ 	}
+-	return i;
++	return (int)(length/2);
+ }
+-
+--- a/src/main.c
++++ b/src/main.c
+@@ -56,7 +56,8 @@
+ int main(int argc, char *argv[]) {
+ 	int client = 1;
+ 	int ch, tmpdbg;
+-	uint8_t a_hour = 255, a_minute = 255;
++	unsigned a_hour = 255, a_minute = 255;
++	char time_tail;
+ 	int ret;
+ 	time_t ctime;
+ 	struct tm * cltime;
+@@ -65,6 +66,7 @@
+ 			long_options, NULL)) != -1) {
+ 		switch (ch) {
+ 		case 'u':
++			if (!optarg[0] || strlen(optarg)>32) { LogWrite(INIT, ERROR, "Username must contain 1..32 bytes"); return 1; }
+ 			UserName = optarg;
+ 			break;
+ 		case 'p':
+@@ -77,7 +79,8 @@
+ 			OfflineHookCmd = optarg;
+ 			break;
+ 		case 'i':
+-			strncpy(DeviceName, optarg, IFNAMSIZ);
++			if (strlen(optarg) >= sizeof(DeviceName)) { LogWrite(INIT, ERROR, "Interface name too long"); return 1; }
++			strcpy(DeviceName, optarg);
+ 			break;
+ 		case 'n':
+ 			if (!inet_aton(optarg, &dns_ipaddr)) {
+@@ -86,7 +89,8 @@
+ 			}
+ 			break;
+ 		case 'H':
+-			strncpy(HostName, optarg, 32);
++			if (strlen(optarg) >= sizeof(HostName)) { LogWrite(INIT, ERROR, "Hostname too long"); return 1; }
++			strcpy(HostName, optarg);
+ 			break;
+ 		case 's':
+ 			if (!inet_aton(optarg, &udpserver_ipaddr)) {
+@@ -98,15 +102,17 @@
+ 			skip_udp_hb = 1;
+ 			break;
+ 		case 'T':
+-			if((sscanf(optarg, "%hhu:%hhu", &a_hour, &a_minute) != 2) || (a_hour >= 24) || (a_minute >= 60)) {
++			if((strlen(optarg)>5 || (sscanf(optarg, "%u:%u%c", &a_hour, &a_minute, &time_tail) != 2)) || (a_hour >= 24) || (a_minute >= 60)) {
+ 				LogWrite(INIT, ERROR, "Time invalid!");
+ 				exit(-1);
+ 			}
+ 			break;
+ 		case 'c':
+ 			Version_len = hexStrToByte(optarg, Version, sizeof(Version));
++			if (Version_len <= 0) { LogWrite(INIT, ERROR, "Invalid version bytes"); return 1; }
+ 			break;
+ 		case 'h':
++			if (strlen(optarg)>64) { LogWrite(INIT, ERROR, "Hash too long"); return 1; }
+ 			Hash = optarg;
+ 			break;
+ 		case 'D':
+@@ -141,7 +147,8 @@
+ 	LogWrite(ALL, INF, "#######################################");
+ 
+ 	if (HostName[0] == 0)
+-		gethostname(HostName, sizeof(HostName));
++		gethostname(HostName, sizeof(HostName)-1);
++	HostName[sizeof(HostName)-1] = 0;
+ 
+ 	if ((client != LOGOFF) && !((UserName && Password && UserName[0] && Password[0]))) {
+ 		LogWrite(INIT, ERROR, "Please specify username and password!");
+@@ -169,7 +176,7 @@
+ 			ctime = time(NULL);
+ 			cltime = localtime(&ctime);
+ 			if(((int)a_hour * 60 + a_minute) > ((int)(cltime -> tm_hour) * 60 + cltime -> tm_min)) {
+-				LogWrite(ALL, INF, "Waiting till %02hhd:%02hhd. Have a good sleep...", a_hour, a_minute);
++				LogWrite(ALL, INF, "Waiting till %02u:%02u. Have a good sleep...", a_hour, a_minute);
+ 				if (OfflineHookCmd) {
+ 					system(OfflineHookCmd);
+ 				}
+--- a/src/drcom.c
++++ b/src/drcom.c
+@@ -20,7 +20,9 @@
+ 	uint32_t ret = 0;
+ 	int i;
+ 	for (i = 0; i < data_len; i += 4) {
+-		ret ^= *(unsigned int *) (data + i);
++		uint32_t word = 0;
++		memcpy(&word, data+i, data_len-i<4 ? data_len-i : 4);
++		ret ^= word;
+ 		ret &= 0xFFFFFFFF;
+ 	}
+ 
+@@ -34,14 +36,12 @@
+ 
+ void encryptDrcomInfo(unsigned char *info) {
+ 	int i;
+-	unsigned char *chartmp = NULL;
+-	chartmp = (unsigned char *) malloc(16);
++	unsigned char chartmp[16];
+ 	for (i = 0; i < 16; i++) {
+ 		chartmp[i] = (unsigned char) ((info[i] << (i & 0x07))
+ 				+ (info[i] >> (8 - (i & 0x07))));
+ 	}
+ 	memcpy(info, chartmp, 16);
+-	free(chartmp);
+ }
+ 
+ size_t AppendDrcomStartPkt(uint8_t *EthHeader, uint8_t *Packet) {
+@@ -64,6 +64,7 @@
+ 		const char *UserName, uint8_t *Packet) {
+ 	size_t packetlen = 0;
+ 	size_t userlen = strlen(UserName);
++	if (userlen > 32) return 0;
+ 
+ 	LogWrite(DRCOM, DEBUG, "Preparing Dr.com identity...");
+ 	memset(Packet, 0x00, 97);	//fill 0x00
+@@ -107,6 +108,7 @@
+ 		const char *UserName, const char *Password, uint8_t *Packet) {
+ 	size_t packetlen = 0;
+ 	size_t userlen = strlen(UserName);
++	if (userlen > 32) return 0;
+ 	uint16_t eaplen = 0;
+ 
+ 	LogWrite(DRCOM, DEBUG, "Preparing Dr.com MD5 response...");
+@@ -230,6 +232,7 @@
+ 
+ int Drcom_MISC_INFO_Setter(uint8_t *send_data, uint8_t *recv_data) {
+ 	int packetlen = 0;
++	if (!UserName || strlen(UserName)>32 || !Hash || strlen(Hash)>64 || Version_len<0 || Version_len>(int)sizeof(Version)) return 0;
+ 	send_data[packetlen++] = 0x07;	// Code
+ 	send_data[packetlen++] = 0x01;	//id
+ 	send_data[packetlen++] = 0xf4;	//len(包的长度低位，一定要偶数长度的)
+--- a/src/auth.c
++++ b/src/auth.c
+@@ -151,6 +151,7 @@
+ 	auth_8021x_addr.sll_family = PF_PACKET;
+ 	auth_8021x_addr.sll_protocol = htons(ETH_P_PAE);
+ 	auth_8021x_addr.sll_pkttype = PACKET_HOST;
++	if ((ret = bind(auth_8021x_sock, (struct sockaddr *)&auth_8021x_addr, sizeof(auth_8021x_addr))) < 0) goto ERR;
+ 	return 0;
+ 
+ ERR:
+@@ -211,7 +212,7 @@
+ 		return auth_udp_sock;
+ 	}
+ 
+-	if ((setsockopt(auth_udp_sock, SOL_SOCKET, SO_REUSEADDR | SO_BROADCAST, &on,
++	if ((setsockopt(auth_udp_sock, SOL_SOCKET, SO_REUSEADDR, &on,
+ 			sizeof(on))) < 0) {
+ 		LogWrite(DRCOM, ERROR, "UDP setsockopt failed: %s", strerror(errno));
+ 		close(auth_udp_sock);
+@@ -258,19 +259,25 @@
+ }
+ 
+ int auth_UDP_Receiver(uint8_t *recv_data) {
+-	struct sockaddr_in clntaddr;
+-	socklen_t addrlen = sizeof(struct sockaddr_in);
+-	int recv_len;
+-
+-	recv_len = recvfrom(auth_udp_sock, recv_data, ETH_FRAME_LEN, 0,
+-			(struct sockaddr*) &clntaddr, &addrlen);
+-	if (recv_len > 0 && memcmp(&clntaddr.sin_addr, &serv_addr.sin_addr, 4) == 0
+-			&& ((recv_data[0] == 0x07) || ((recv_data[0] == 0x4d) && (recv_data[1] == 0x38)))) {
+-		// server information is started with 0x4d38
+-		PrintHex(DRCOM, "Packet received", recv_data, recv_len);
+-		return 1;
+-	}
+-	return 0;
++	struct sockaddr_in peer = {0};
++	socklen_t size = sizeof(peer);
++	int n = recvfrom(auth_udp_sock, recv_data, ETH_FRAME_LEN-1, 0, (struct sockaddr *)&peer, &size);
++	if (n < 4 || size < sizeof(peer) || peer.sin_family != AF_INET ||
++	    peer.sin_addr.s_addr != serv_addr.sin_addr.s_addr || peer.sin_port != serv_addr.sin_port) return 0;
++	if (recv_data[0] == 7) {
++		if (n < 5) return 0;
++		switch (recv_data[4]) {
++		case 2: if (n < 12) return 0; break;
++		case 4: if (n < 32) return 0; break;
++		case 0x0b:
++			if (n < 6 || (recv_data[5] == 2 && n < 20)) return 0;
++			break;
++		}
++	} else if (recv_data[0] != 0x4d || recv_data[1] != 0x38) return 0;
++	/* 保留一字节结束符，服务器文字即使未带零也不会越界打印。 */
++	recv_data[n] = 0;
++	PrintHex(DRCOM, "Packet received", recv_data, n);
++	return 1;
+ }
+ 
+ int auth_8021x_Sender(uint8_t *send_data, int send_data_len) {
+@@ -284,19 +291,19 @@
+ }
+ 
+ int auth_8021x_Receiver(uint8_t *recv_data) {
+-	struct ethhdr *recv_hdr;
+-	struct ethhdr *local_ethhdr;
+-	local_ethhdr = (struct ethhdr *) EthHeader;
+-	int recv_len = recv(auth_8021x_sock, recv_data, ETH_FRAME_LEN, 0);
+-	recv_hdr = (struct ethhdr *) recv_data;
+-	// 过滤掉非0x888e的报文
+-	if (recv_len > 0
+-			&& (0 == memcmp(recv_hdr->h_dest, local_ethhdr->h_source, ETH_ALEN))
+-			&& (htons(ETH_P_PAE) == recv_hdr->h_proto)) {
+-		PrintHex(DOT1X, "Packet received", recv_data, recv_len);
+-		return 1;
+-	}
+-	return 0;
++	int n = recv(auth_8021x_sock, recv_data, ETH_FRAME_LEN, 0);
++	unsigned outer, inner;
++	if (n < 22 || memcmp(recv_data, EthHeader+6, 6) || recv_data[12]!=0x88 || recv_data[13]!=0x8e || recv_data[15]!=0) return 0;
++	outer = ((unsigned)recv_data[16]<<8) | recv_data[17];
++	inner = ((unsigned)recv_data[20]<<8) | recv_data[21];
++	if (outer < 4 || outer > (unsigned)n-18 || inner < 4 || inner > outer) return 0;
++	if (resev && memcmp(recv_data+6,EthHeader,6)) return 0;
++	if (recv_data[18] == REQUEST) {
++		if (inner < 5) return 0;
++		if (recv_data[22] == MD5 && (inner < 22 || recv_data[23] != 16)) return 0;
++	}
++	PrintHex(DOT1X, "Packet received", recv_data, n);
++	return 1;
+ }
+ 
+ size_t appendStartPkt(uint8_t header[]) {
+@@ -589,6 +596,7 @@
+ 	// 带eapol头的总长度
+ 	uint16_t pkg_len = 0;
+ 	const char *errstr;
++	char notification[ETH_FRAME_LEN];
+ 
+ 	memcpy(&pkg_len, recv_data + 20, sizeof(pkg_len));
+ 	pkg_len = htons(pkg_len);
+@@ -609,12 +617,13 @@
+ 		case NOTIFICATION:
+ 			// 23是data的偏移量，pkg_len-5是减去eapol头部的data的长度
+ 			// 在信息的最后补0，方便打印
+-			recv_data[23 + pkg_len - 5] = 0;
+-			if ((errstr = DrcomEAPErrParse((const char *) (recv_data + 23))) != NULL) {
++			memcpy(notification, recv_data+23, pkg_len-5);
++			notification[pkg_len-5] = 0;
++			if ((errstr = DrcomEAPErrParse(notification)) != NULL) {
+ 				LogWrite(DOT1X, ERROR, "Server: Authentication failed: %s", errstr);
+ 				return -1;
+ 			} else {
+-				LogWrite(DOT1X, INF, "Server: Notification: %s", recv_data + 23);
++				LogWrite(DOT1X, INF, "Server: Notification: %s", notification);
+ 			}
+ 			break;
+ 		case AVAILABLE:
+@@ -637,7 +646,7 @@
+ 		// 处理认证失败信息
+ 		success_8021x = 0;
+ 		isNeedHeartBeat = 0;
+-		uint8_t errtype = recv_data[22];
++		uint8_t errtype = pkg_len > 4 ? recv_data[22] : 0;
+ 		LogWrite(DOT1X, ERROR, "Server: Failure.");
+ 		if (times > 0) {
+ 			times--;

@@ -1,0 +1,214 @@
+--- a/util/packet_util.c
++++ b/util/packet_util.c
+@@ -6,24 +6,47 @@
+ #include <stdlib.h>
+ 
+ RESULT append_to_frame(ETH_EAP_FRAME* frame, const uint8_t* data, int len) {
+-    if (frame->actual_len + len > frame->buffer_len)
+-        return FAILURE;
+-
+-    memmove(frame->content + frame->actual_len, data, len);
++    /* 使用剩余容量比较，避免负长度转换及加法溢出。 */
++    if (!frame || len < 0 || frame->actual_len > frame->buffer_len ||
++            (size_t)len > frame->buffer_len - frame->actual_len ||
++            (len > 0 && (!frame->content || !data))) return FAILURE;
++    if (len > 0) memmove(frame->content + frame->actual_len, data, len);
+     frame->actual_len += len;
+     return SUCCESS;
+ }
+ 
+ ETH_EAP_FRAME* frame_duplicate(const ETH_EAP_FRAME* frame) {
+-    ETH_EAP_FRAME* _frame = (ETH_EAP_FRAME*)malloc(sizeof(ETH_EAP_FRAME));
+-    _frame->actual_len = frame->actual_len;
+-    _frame->buffer_len = frame->buffer_len;
+-    _frame->content = (uint8_t*)malloc(_frame->actual_len);
+-    if (_frame->content == NULL) {
++    if (!frame || !frame->content || frame->buffer_len == 0 ||
++            frame->actual_len > frame->buffer_len) return NULL;
++    ETH_EAP_FRAME* copy = malloc(sizeof(*copy));
++    if (!copy) return NULL;
++    /* 副本声明的容量必须与实际分配一致，插件可以继续追加内容。 */
++    copy->content = calloc(1, frame->buffer_len);
++    if (!copy->content) {
++        free(copy);
+         return NULL;
+     }
+-    memmove(_frame->content, frame->content, _frame->actual_len);
+-    return _frame;
++    copy->actual_len = frame->actual_len;
++    copy->buffer_len = frame->buffer_len;
++    memcpy(copy->content, frame->content, frame->actual_len);
++    return copy;
++}
++
++RESULT frame_validate_received(const ETH_EAP_FRAME* frame) {
++    const size_t eapol_end = sizeof(ETHERNET_HEADER) + sizeof(EAPOL_HEADER);
++    if (!frame || !frame->content || frame->actual_len > frame->buffer_len ||
++            frame->actual_len < eapol_end) return FAILURE;
++    if (frame->header->eapol_hdr.type[0] != EAP_PACKET) return SUCCESS;
++    /* 成功和失败报文只有四字节 EAP 头，没有 type 字段。 */
++    if (frame->actual_len < sizeof(FRAME_HEADER) - 1) return FAILURE;
++    if (frame->header->eap_hdr.code[0] == EAP_REQUEST ||
++            frame->header->eap_hdr.code[0] == EAP_RESPONSE) {
++        if (frame->actual_len < sizeof(FRAME_HEADER)) return FAILURE;
++        if (frame->header->eap_hdr.type[0] == MD5_CHALLENGE &&
++                (frame->actual_len < sizeof(FRAME_HEADER) + 1 + 16 ||
++                 frame->content[sizeof(FRAME_HEADER)] != 16)) return FAILURE;
++    }
++    return SUCCESS;
+ }
+ 
+ void free_frame(ETH_EAP_FRAME** frame) {
+--- a/include/packet_util.h
++++ b/include/packet_util.h
+@@ -21,6 +21,9 @@
+  */
+ ETH_EAP_FRAME* frame_duplicate(const ETH_EAP_FRAME* frame);
+ 
++/* 在插件和状态机读取字段前检查实际帧长。 */
++RESULT frame_validate_received(const ETH_EAP_FRAME* frame);
++
+ /*
+  * Free a frame created by frame_duplicate
+  */
+--- a/util/misc.c
++++ b/util/misc.c
+@@ -5,6 +5,8 @@
+ #include <unistd.h>
+ #include <sys/types.h>
+ #include <getopt.h>
++#include <limits.h>
++#include "misc.h"
+ 
+ #include "linkedlist.h"
+ #include "logging.h"
+@@ -88,11 +90,12 @@
+ }
+ 
+ void gbk2utf8(char* in, size_t inlen, char* out, size_t outlen) {
++    if (!out || !in || !outlen || !inlen) return;
+ #ifdef ENABLE_ICONV
+     iconv_t _cd = iconv_open("utf-8", "gbk");
+-    if (_cd == NULL) {
++    if (_cd == (iconv_t)-1) {
+         PR_WARN("无法从 iconv 获取编码描述符，服务器消息可能会出现乱码");
+-        memmove(out, in, inlen);
++        memmove(out, in, inlen < outlen ? inlen : outlen);
+     } else {
+         iconv(_cd, &in, &inlen, &out, &outlen);
+         iconv_close(_cd);
+@@ -100,22 +103,23 @@
+ #elif defined(ENABLE_GBCONV)
+     gbconv8(in, inlen, out, outlen);
+ #else
+-    memmove(out, in, inlen);
++    memmove(out, in, inlen < outlen ? inlen : outlen);
+ #endif
+ }
+ 
+ void pr_info_gbk(char* in, size_t inlen) {
+-    size_t _utf8_size = inlen << 2;
+-    char* _utf8_buf = (char*)malloc(_utf8_size);
+-    memset(_utf8_buf, 0, _utf8_size);
+-    if (_utf8_buf != NULL) {
+-        gbk2utf8(in, inlen, _utf8_buf, _utf8_size);
+-        PR_INFO("%s", _utf8_buf);
+-        free(_utf8_buf);
+-    } else {
+-        _utf8_buf = in;
+-        PR_INFO("%s", _utf8_buf);
++    if (!in || !inlen || inlen > (SIZE_MAX - 1) / 4) return;
++    /* 额外保留终止符；分配失败时仍按输入长度输出，不能按裸字符串读取。 */
++    size_t capacity = inlen * 4;
++    char* text = malloc(capacity + 1);
++    if (!text) {
++        PR_INFO("%.*s", (int)(inlen > INT_MAX ? INT_MAX : inlen), in);
++        return;
+     }
++    memset(text, 0, capacity + 1);
++    gbk2utf8(in, inlen, text, capacity);
++    PR_INFO("%s", text);
++    free(text);
+ }
+ 
+ RESULT go_background() {
+--- a/include/misc.h
++++ b/include/misc.h
+@@ -38,7 +38,7 @@
+ /* 10110001b -> 10001101b */
+ uint8_t bit_reverse(uint8_t in);
+ 
+-void gbk2utf8(char* out, char* in, size_t len);
++void gbk2utf8(char* in, size_t inlen, char* out, size_t outlen);
+ void pr_info_gbk(char* in, size_t inlen);
+ 
+ /*
+--- a/eap_state_machine.c
++++ b/eap_state_machine.c
+@@ -231,21 +231,22 @@
+  * and switch to next state (to send response)
+  */
+ void eap_state_machine_recv_handler(ETH_EAP_FRAME* frame) {
+-    /* Keep a copy of the frame, since if_impl may not hold it */
+-    if (PRIV->last_recv_frame != NULL) {
+-        free_frame(&PRIV->last_recv_frame);
+-    }
+-    PRIV->last_recv_frame = frame_duplicate(frame);
+-    packet_plugin_on_frame_received(PRIV->last_recv_frame);
++    /* 无效报文和分配失败不会破坏上一帧或触发插件。 */
++    if (IS_FAIL(frame_validate_received(frame))) return;
++    ETH_EAP_FRAME* copy = frame_duplicate(frame);
++    if (!copy) return;
++    free_frame(&PRIV->last_recv_frame);
++    PRIV->last_recv_frame = copy;
++    if (IS_FAIL(packet_plugin_on_frame_received(copy))) return;
+ 
+     EAPOL_TYPE _eapol_type = frame->header->eapol_hdr.type[0];
+     if (_eapol_type == EAP_PACKET) {
+         /* We don't want to handle other types here */
+-        EAP_TYPE _eap_type = frame->header->eap_hdr.type[0];
+         EAP_CODE _eap_code = frame->header->eap_hdr.code[0];
+ 
+         switch (_eap_code) {
+-            case EAP_REQUEST:
++            case EAP_REQUEST: {
++                EAP_TYPE _eap_type = frame->header->eap_hdr.type[0];
+                 /*
+                  * Store server's MAC addr, do not use broadcast after.
+                  */
+@@ -256,6 +257,7 @@
+                     switch_to_state(EAP_STATE_CHALLENGE_SENT, frame);
+                 }
+                 break;
++            }
+             case EAP_SUCCESS:
+                 switch_to_state(EAP_STATE_SUCCESS, frame);
+                 break;
+--- a/config.c
++++ b/config.c
+@@ -65,9 +65,13 @@
+                 PR_ERR("--conf-file必须有一个参数");
+                 return FAILURE;
+             } else {
+-                int _len = strnlen(argv[i + 1], MAX_PATH);
+-                g_prog_config.conffile = (char*)malloc(_len);
+-                strncpy(g_prog_config.conffile, argv[i + 1], _len);
++                size_t len = strnlen(argv[i + 1], MAX_PATH);
++                if (!len || len == MAX_PATH) return FAILURE;
++                /* 路径必须包含终止符，重复选项只在分配成功后替换。 */
++                char* path = strdup(argv[i + 1]);
++                if (!path) return FAILURE;
++                free(g_prog_config.conffile);
++                g_prog_config.conffile = path;
+             }
+         }
+     }
+@@ -75,7 +79,7 @@
+     if (g_prog_config.conffile == NULL)
+         g_prog_config.conffile = strdup(DEFAULT_CONFFILE);
+ 
+-    return SUCCESS;
++    return g_prog_config.conffile ? SUCCESS : FAILURE;
+ }
+ 
+ #define _STR(x) #x

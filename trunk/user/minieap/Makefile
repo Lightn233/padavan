@@ -1,26 +1,28 @@
-SRC_NAME = minieap-0.92.1-pdv
-SRC_URL = https://github.com/hanwckf/minieap/archive/v0.92.1-pdv.zip
-THISDIR = $(shell pwd)
+include $(ROOTDIR)/rules.mk
 
-all: download_test extract_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME) LIBICONV_STANDALONE=true
+PKG_NAME:=minieap
+PKG_VERSION:=0.93
+PKG_SOURCE:=minieap-9e10f320a9fce46c8f4286324a0fc70e572f61dc.tar.gz
+PKG_HASH:=80fbdda586fe582b7fef32d4e5fea979d50f0c5529baa3cc535e75c8acbb7c1e
+PKG_SOURCE_URL:=https://codeload.github.com/updateing/minieap/tar.gz
+PKG_SOURCE_URL_FILE:=9e10f320a9fce46c8f4286324a0fc70e572f61dc
 
-download_test: 
-	( if [ ! -f $(THISDIR)/$(SRC_NAME).zip ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).zip $(SRC_URL); \
-	fi )
+include $(INCLUDE_DIR)/package.mk
 
-extract_test:
-	( if [ ! -d $(THISDIR)/$(SRC_NAME) ]; then \
-		unzip -qq $(SRC_NAME).zip; \
-		cat ./patch/*.patch | patch -d $(SRC_NAME) -p1 ; \
-	fi )
+define Build/Prepare
+	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
+	tar -xf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
+	$(Build/Patch)
+endef
 
-romfs:
-	$(ROMFSINST) -p +x $(THISDIR)/$(SRC_NAME)/minieap /usr/bin/minieap
-	$(ROMFSINST) $(THISDIR)/$(SRC_NAME)/minieap.conf /etc_ro/minieap.conf
+define Build/Compile
+	$(MAKE) -C $(PKG_BUILD_DIR) -j$(HOST_NCPU) CC="$(TARGET_CC)" \
+		CUSTOM_CFLAGS="$(TARGET_CFLAGS) -std=gnu11" CUSTOM_LDFLAGS="$(TARGET_LDFLAGS)" LIBICONV_STANDALONE=false
+endef
 
-clean:
-	if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) clean ; \
-	fi ; \
+$(eval $(call BuildPackage,minieap))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
+
+romfs: $(STAMP_BUILT)
+	$(ROMFSINST) $(PKG_BUILD_DIR)/minieap /usr/bin/minieap
+	$(ROMFSINST) $(PKG_BUILD_DIR)/minieap.conf /etc_ro/minieap.conf

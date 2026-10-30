@@ -1,27 +1,29 @@
-SRC_NAME = dogcom-1.6.2-pdv
-SRC_URL = https://github.com/hanwckf/dogcom/archive/v1.6.2-pdv.tar.gz
+include $(ROOTDIR)/rules.mk
 
-THISDIR = $(shell pwd)
+PKG_NAME:=dogcom
+PKG_VERSION:=1.6.2-pdv
+PKG_SOURCE:=dogcom-1.6.2-pdv.tar.gz
+PKG_HASH:=a097139fa712cc008e485f5aaeddbb5b559db71da9ac770bacabdb6787e883b6
 
-all: download_test extract_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME) CC="$(CC)"
-	
-download_test:
-	( if [ ! -f $(SRC_NAME).tar.gz ]; then \
-		wget -t5 --timeout=20 --no-check-certificate -O $(SRC_NAME).tar.gz $(SRC_URL); \
-	fi )
+include $(INCLUDE_DIR)/package.mk
 
-extract_test:
-	( if [ ! -d $(SRC_NAME) ]; then \
-		tar zxf $(SRC_NAME).tar.gz; \
-	fi )
+define Build/Prepare
+	mkdir -p "$(DL_DIR)"
+	[ -f "$(DL_DIR)/$(PKG_SOURCE)" ] || cp "$(CURDIR)/$(PKG_SOURCE)" "$(DL_DIR)/$(PKG_SOURCE)"
+	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
+	tar -xf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
+	$(Build/Patch)
+endef
 
-clean:
-	( if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) clean ; \
-	fi )
+define Build/Compile
+	$(MAKE) -C $(PKG_BUILD_DIR) -j$(HOST_NCPU) CC="$(TARGET_CC)" \
+		CFLAGS="$(TARGET_CFLAGS) -std=gnu11" LDFLAGS="$(TARGET_LDFLAGS)"
+endef
 
-romfs:
-	$(ROMFSINST) -p +x $(THISDIR)/$(SRC_NAME)/dogcom /usr/bin/dogcom
-	$(ROMFSINST) -d $(THISDIR)/$(SRC_NAME)/sample-p.conf /etc_ro/dogcom/sample-p.conf
-	$(ROMFSINST) -d $(THISDIR)/$(SRC_NAME)/sample-d.conf /etc_ro/dogcom/sample-d.conf
+$(eval $(call BuildPackage,dogcom))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
+
+romfs: $(STAMP_BUILT)
+	$(ROMFSINST) $(PKG_BUILD_DIR)/dogcom /usr/bin/dogcom
+	$(ROMFSINST) -d $(PKG_BUILD_DIR)/sample-p.conf /etc_ro/dogcom/sample-p.conf
+	$(ROMFSINST) -d $(PKG_BUILD_DIR)/sample-d.conf /etc_ro/dogcom/sample-d.conf

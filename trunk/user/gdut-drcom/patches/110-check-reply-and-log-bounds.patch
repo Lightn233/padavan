@@ -1,0 +1,110 @@
+--- a/src/auth.c
++++ b/src/auth.c
+@@ -149,7 +149,13 @@
+ 
+     socklen_t sin_size;
+     sin_size = sizeof(struct sockaddr_in);
+-    bind(client_sockfd, (struct sockaddr *) &local_addr, sin_size);
++    /* 固定服务器来源，避免任意 UDP 回复改写后续发送目标。 */
++    if (bind(client_sockfd, (struct sockaddr *)&local_addr, sin_size) < 0 ||
++            connect(client_sockfd, (struct sockaddr *)&remote_addr, sizeof(remote_addr)) < 0) {
++        log_error(logger, "无法绑定或连接认证服务器");
++        close(client_sockfd);
++        return -1;
++    }
+ #ifdef WIN32
+     int timeout = 2000;
+ #else
+@@ -187,7 +193,7 @@
+             }
+             memset(pkt_data, 0x00, 1024);
+             if ((length = recvfrom(client_sockfd, pkt_data, 1024, 0,\
+-                (struct sockaddr *) &remote_addr, &sin_size)) == -1)
++                (struct sockaddr *) &remote_addr, &sin_size)) < 16)
+             {
+                 log_info(logger, "recv kap1_1 timeout, retry %d", retry_cnt++);
+             }
+@@ -226,7 +232,7 @@
+                 goto HEART_BEAT_START;
+             }
+             if ((length = recvfrom(client_sockfd, pkt_data, 1024, 0, \
+-                (struct sockaddr *) &remote_addr, &sin_size)) == -1)
++                (struct sockaddr *) &remote_addr, &sin_size)) < 1)
+             {
+                 log_info(logger, "recv kap1_2 timeout, retry %d!", retry_cnt++);
+             }
+@@ -266,7 +272,7 @@
+             }
+             memset(pkt_data, 0x00, 1024);
+             if ((length = recvfrom(client_sockfd, pkt_data, 1024, 0,\
+-                (struct sockaddr *) &remote_addr, &sin_size)) == -1)
++                (struct sockaddr *) &remote_addr, &sin_size)) < 8 || (length < 20 && !(pkt_data[0] == 0x07 && pkt_data[2] == 0x10)))
+             {
+                 log_info(logger, "recv kap2_1 timeout, retry %d!", retry_cnt++);
+             }
+@@ -311,7 +317,7 @@
+             }
+             memset(pkt_data, 0x00, 1024);
+             if ((length = recvfrom(client_sockfd, pkt_data, 1024, 0,\
+-                (struct sockaddr *) &remote_addr, &sin_size)) == -1)
++                (struct sockaddr *) &remote_addr, &sin_size)) < 1)
+             {
+                 log_info(logger, "recv kap2_2 timeout, retry %d!", retry_cnt++);
+             }
+@@ -348,26 +354,24 @@
+     return 0;
+ }
+ 
+-static void pkt_data_log(char * header, uint8_t * pktdata, int len)
+-{
+-    static char log_buf[1024];
+-
+-    int i, index = 0;
+-    strcpy(log_buf, header);
+-    index += strlen(header);
+-    index += sprintf(log_buf+index, " len: %d", len);
+-
+-    for (i=0; i<len; i++)
+-    {
+-        if (i%16 == 0)
+-        {
+-            index += sprintf(log_buf + index, "\n  ");
+-        }
+-        index += sprintf(log_buf + index, "%02hhx ", *(pktdata+i));
+-    }
+-
+-    log_info(logger, log_buf);
+-}
++static void pkt_data_log(char *header, uint8_t *pktdata, int len)
++{
++    char buffer[1024];
++    if (!header || !pktdata || len < 0) return;
++    int written = snprintf(buffer, sizeof(buffer), "%s len: %d", header, len);
++    if (written < 0) return;
++    size_t index = (size_t)written < sizeof(buffer) ? (size_t)written : sizeof(buffer)-1;
++    /* 大回复只截断调试输出，不改变协议处理内容。 */
++    for (int i=0; i<len && index + 7 < sizeof(buffer); i++) {
++        if (i % 16 == 0) { memcpy(buffer+index, "\n  ", 3); index += 3; }
++        written = snprintf(buffer+index, sizeof(buffer)-index, "%02x ", pktdata[i]);
++        if (written < 0) break;
++        index += written;
++    }
++    buffer[index] = 0;
++    log_info(logger, "%s", buffer);
++}
++
+ /*
+ static void print_as_hex(uint8_t *buf, int len)
+ {
+@@ -389,7 +393,10 @@
+     int i;
+     for (i=0; i<len; i+=4)
+     {
+-        ret ^= *(uint32_t *)(data+i);
++        uint32_t word = 0;
++        /* 协议缓冲区可能未按整数对齐。 */
++        memcpy(&word, data+i, len-i < 4 ? (size_t)(len-i) : 4);
++        ret ^= word;
+         ret &= 0xffffffff;
+     }
+     return ret;

@@ -200,7 +200,13 @@ dir_$(CONFIG_FIRMWARE_INCLUDE_IPERF3)			+= iperf3
 dir_$(CONFIG_FIRMWARE_INCLUDE_MINIEAP)			+= minieap
 dir_$(CONFIG_FIRMWARE_INCLUDE_NJIT_CLIENT)		+= njit-client
 dir_$(CONFIG_FIRMWARE_INCLUDE_MENTOHUST)		+= mentohust
-dir_$(CONFIG_FIRMWARE_INCLUDE_SMARTDNS)		+= smartdns
+# DNS 转发旧入口复用 SmartDNS 核心，独立配置和启停。
+ifneq ($(filter y,$(CONFIG_FIRMWARE_INCLUDE_SMARTDNS) $(CONFIG_FIRMWARE_INCLUDE_DNSFORWARDER)),)
+dir_y += smartdns
+endif
+ifneq ($(filter y,$(CONFIG_FIRMWARE_INCLUDE_ALIDDNS) $(CONFIG_FIRMWARE_INCLUDE_DNSFORWARDER)),)
+dir_y += legacy-compat
+endif
 dir_$(CONFIG_FIRMWARE_INCLUDE_xTUN) 			+= xTun
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_WING),y)
 dir_y 			+= wing
@@ -252,7 +258,10 @@ endif
 
 # 可选组件必须在目标依赖展开前加入列表。
 dir_$(CONFIG_FIRMWARE_INCLUDE_RTP2HTTPD) += rtp2httpd
-dir_$(CONFIG_FIRMWARE_INCLUDE_DDNS_GO) += ddns-go
+# AliDDNS 旧用户可安装同一兼容核心；未安装时保留旧更新器。
+ifneq ($(filter y,$(CONFIG_FIRMWARE_INCLUDE_DDNS_GO) $(CONFIG_FIRMWARE_INCLUDE_ALIDDNS)),)
+dir_y += ddns-go
+endif
 
 all: $(patsubst %,%_only,$(dir_y))
 

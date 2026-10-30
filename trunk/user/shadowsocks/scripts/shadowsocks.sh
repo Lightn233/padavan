@@ -105,16 +105,16 @@ gen_config_file() {
 	*) config_file=$CONFIG_SOCK5_FILE; stype=$(nvram get s5_type) ;;
 	esac
 	bin=$(find_bin "$stype")
-	[ -x "$bin" ] || { log "找不到 $stype 程序。"; return 1; }
+	[ "$stype" = trojan ] || [ -x "$bin" ] || { log "找不到 $stype 程序。"; return 1; }
 	case "$stype" in
 	ss) proxy_json_write ss "$config_file" /etc_ro/ss/genssconfig.lua "$1" "$3" ;;
 	ssr) proxy_json_write ssr "$config_file" /etc_ro/ss/genssrconfig.lua "$1" "$3" ;;
 	trojan)
 		v2ray_enable=1
 		if [ "$2" = 0 ]; then
-			proxy_json_write trojan "$trojan_json_file" /etc_ro/ss/gentrojanconfig.lua "$1" nat 1080
+			proxy_trojan_config "$1" tcp 1080 "$trojan_json_file"
 		else
-			proxy_json_write trojan /tmp/trojan-ssr-reudp.json /etc_ro/ss/gentrojanconfig.lua "$1" client 10801
+			proxy_trojan_config "$1" udp 1080 /tmp/trojan-ssr-reudp.json
 		fi ;;
 	v2ray|xray)
 		v2ray_enable=1
@@ -225,7 +225,7 @@ start_redir_tcp() {
 	gen_config_file "$GLOBAL_SERVER" 0 1080 || return 1
 	stype=$(nvram get d_type)
 	local bin=$(find_bin $stype)
-	[ ! -f "$bin" ] && log "Main node:Can't find $bin program, can't start!" && return 1
+	[ "$stype" = trojan ] || [ -x "$bin" ] || return 1
 	if [ "$(nvram get ss_threads)" = "0" ]; then
 		threads=$(cat /proc/cpuinfo | grep 'processor' | wc -l)
 	else
@@ -244,11 +244,8 @@ start_redir_tcp() {
 		log "Shadowsocks/ShadowsocksR $threads 线程启动成功!"
 		;;
 	trojan)
-		for i in $(seq 1 $threads); do
-			run_bin $bin --config $trojan_json_file
-			usleep 500000
-		done
-		log "$($bin --version 2>&1 | head -1) 启动成功!"
+		proxy_trojan_run "$trojan_json_file" 1080 tcp || return 1
+		log "Trojan 主节点监听已就绪。"
 		;;
 	v2ray)
 		proxy_run_core "$bin" "$v2_json_file" 1080 tcp || return 1
@@ -275,7 +272,7 @@ start_redir_udp() {
 		utype=$(nvram get ud_type)
 		log "启动 $utype 游戏 UDP 中继服务器"
 		local bin=$(find_bin $utype)
-		[ ! -f "$bin" ] && log "UDP TPROXY Relay:Can't find $bin program, can't start!" && return 1
+		[ "$utype" = trojan ] || [ -x "$bin" ] || return 1
 		case "$utype" in
 		ss | ssr)
 			ARG_OTA=""
@@ -295,8 +292,7 @@ start_redir_udp() {
 			;;	
 		trojan)
 			gen_config_file "$UDP_RELAY_SERVER" 1 1080 || return 1
-			$bin --config /tmp/trojan-ssr-reudp.json >/dev/null 2>&1 &
-			run_bin ipt2socks -U -b 0.0.0.0 -4 -s 127.0.0.1 -p 10801 -l 1080
+			proxy_trojan_run /tmp/trojan-ssr-reudp.json 1080 udp || return 1
 			;;
 		socks5)
 			echo "1"
@@ -376,12 +372,12 @@ start_local() {
 	[ -n "$local_server" ] && [ "$local_server" != nil ] || return 0
 	local type=$(nvram get s5_type)
 	local bin=$(find_bin $type)
-	[ ! -f "$bin" ] && log "Global_Socks5:Can't find $bin program, can't start!" && return 1
+	[ "$type" = trojan ] || [ -x "$bin" ] || return 1
 	case "$type" in
 	ss | ssr)
 		local name="Shadowsocks"
 		local bin=$(find_bin "$type-local")
-		[ ! -f "$bin" ] && log "Global_Socks5:Can't find $bin program, can't start!" && return 1
+		[ "$type" = trojan ] || [ -x "$bin" ] || return 1
 		[ "$type" == "ssr" ] && name="ShadowsocksR"
 		gen_config_file "$local_server" 3 "$s5_port" || return 1
 		run_bin $bin -c $CONFIG_SOCK5_FILE -u -f /var/run/ssr-local.pid
@@ -400,8 +396,8 @@ start_local() {
 		;;
 	trojan)
 		[ "$SS_CONFIG_READY" = 1 ] || proxy_local_config "$local_server" "$type" "$s5_port" || return 1
-		run_bin $bin --config /tmp/trojan-ssr-local.json
-		log "Global_Socks5:$($bin --version 2>&1 | head -1) Started!"
+		proxy_trojan_run /tmp/trojan-ssr-local.json "$s5_port" tcp || return 1
+		log "Trojan 本地 SOCKS5 监听已就绪。"
 		;;
 	*)
 		[ -e /proc/sys/net/ipv6 ] && local listenip='-i ::'
@@ -528,12 +524,7 @@ kill_process() {
 		killall -9 ss-local >/dev/null 2>&1
 	fi
 
-	trojandir=$(pidof trojan)
-	if [ -n "$trojandir" ]; then
-		log "关闭 trojan 进程..."
-		killall trojan >/dev/null 2>&1
-		killall -9 trojan >/dev/null 2>&1
-	fi
+	# Trojan 与复用的 Xray 均由 proxy_stop_cores 按配置归属停止。
 	
 	ipt2socks_process=$(pidof ipt2socks)
 	if [ -n "$ipt2socks_process" ]; then

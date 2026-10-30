@@ -1,0 +1,22 @@
+--- a/src/encrypt.c
++++ b/src/encrypt.c
+@@ -91,9 +91,16 @@ rand_bytes(void *output, int len)
+ {
+ 
+     int i;
+-    int *array = (int *)output;
+-    for (i = 0; i < len / sizeof(int); i++)
+-        array[i] = rand();
++    unsigned char *array = output;
++    /* TLS 紧凑头中的缓冲区未必按整数对齐，保留原填充值并复制字节。 */
++    for (i = 0; i < len; ) {
++        int value = rand();
++        size_t count = (size_t)(len - i);
++        if (count > sizeof(value))
++            count = sizeof(value);
++        memcpy(array + i, &value, count);
++        i += count;
++    }
+     // always return success
+     return 0;
+ }

@@ -1,41 +1,44 @@
-SRC_NAME = simple-obfs
-THISDIR = $(shell pwd)
+include $(ROOTDIR)/rules.mk
 
-all: extract_test config_test
-	$(MAKE) -j$(HOST_NCPU) -C $(SRC_NAME) LIBS="-lpthread -lm" LDFLAGS="-Wl, -L$(STAGEDIR)/lib" CFLAGS="-I$(STAGEDIR)/include" 
+# 旧协议继续兼容；固定源码和子模块，避免每次编译得到不同版本。
+PKG_NAME:=simple-obfs
+PKG_VERSION:=486bebd9208539058e57e23a12f23103016e09b4
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://codeload.github.com/shadowsocks/simple-obfs/tar.gz
+PKG_SOURCE_URL_FILE:=$(PKG_VERSION)
+PKG_HASH:=d717dc3389955633a2155b53a280c3982e30f7f890df9b4a32961040282fbf26
+CORK_VERSION:=f02984545061c924808e4b9ea7cc6749a41f1979
+CORK_SOURCE:=libcork-$(CORK_VERSION).tar.gz
+CORK_HASH:=0f1ede7bd23672718d1d10adbe9e4028515d029585b93092d7199e51a40b3fe4
 
-extract_test:
-	( if [ ! -d $(SRC_NAME) ]; then \
-		git clone https://github.com/shadowsocks/simple-obfs.git ; \
-		cd $(SRC_NAME) ; \
-		git submodule update --init --recursive ; \
-	fi )
-	
-config_test:
-	( if [ -f ./config_done ]; then \
-		echo "the same configuration"; \
-	else \
-		make configure && touch config_done; \
-	fi )
+include $(INCLUDE_DIR)/package.mk
 
-configure:
-	( cd $(SRC_NAME) ; \
-	./autogen.sh ; \
-	./configure \
-		--prefix=/usr \
-		--disable-ssp \
-		--disable-assert \
-		--disable-documentation \
-		--host=$(HOST_TARGET) \
-		--build=$(HOST_BUILD) ; \
-	)
+define Download/libcork
+  FILE:=$(CORK_SOURCE)
+  URL:=https://codeload.github.com/shadowsocks/libcork/tar.gz
+  URL_FILE:=$(CORK_VERSION)
+  HASH:=$(CORK_HASH)
+endef
+$(eval $(call Download,libcork))
 
-clean:
-	if [ -f $(SRC_NAME)/Makefile ] ; then \
-		$(MAKE) -C $(SRC_NAME) distclean ; \
-	fi ; \
-	rm -f config_done
+define Build/Prepare
+	printf '%s  %s\n' '$(PKG_HASH)' '$(DL_DIR)/$(PKG_SOURCE)' | sha256sum -c -
+	printf '%s  %s\n' '$(CORK_HASH)' '$(DL_DIR)/$(CORK_SOURCE)' | sha256sum -c -
+	tar -xzf '$(DL_DIR)/$(PKG_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)'
+	mkdir -p '$(PKG_BUILD_DIR)/libcork'
+	tar -xzf '$(DL_DIR)/$(CORK_SOURCE)' --strip-components=1 -C '$(PKG_BUILD_DIR)/libcork'
+	$(Build/Patch)
+	(cd '$(PKG_BUILD_DIR)' && autoreconf --install --force)
+endef
 
-romfs:
-#	$(ROMFSINST) -p +x $(THISDIR)/$(SRC_NAME)/src/obfs-server /usr/bin/obfs-server
-	$(ROMFSINST) -p +x $(THISDIR)/$(SRC_NAME)/src/obfs-local /usr/bin/obfs-local
+EXTRA_CFLAGS += -std=gnu11
+CONFIGURE_ARGS += --disable-documentation --disable-ssp
+CONFIGURE_VARS += LIBS="-lpthread -lm"
+MAKE_FLAGS += LIBS="-lpthread -lm"
+
+$(eval $(call BuildPackage,simple-obfs))
+$(STAMP_PREPARED): Makefile $(wildcard patches/*.patch)
+
+romfs: $(STAMP_BUILT)
+	$(INSTALL_DIR) $(ROMFSDIR)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/obfs-local $(ROMFSDIR)/usr/bin/obfs-local

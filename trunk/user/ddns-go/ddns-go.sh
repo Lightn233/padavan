@@ -11,8 +11,8 @@ CONF=$BASE/ddns_go_config.yaml
 RUN=$ROOT/var/run/ddns-go
 PIDFILE=$RUN/pid
 VERSION=6.17.7
-ARCHIVE_HASH=5ef7ae2623077a2ab955aeaf3003a92fd333433f5c598a65c7e36508fc7c455e
-BINARY_HASH=0e4fb1db68ab5c85c4852289270bcd5c7cdb116b7fc9ee80b6cd46e4d8706a84
+ARCHIVE_HASH=f7afd1a3cfd54c3667db74cc80491bfe48e1ba4ffa08a992366d0229c72f1f85
+BINARY_HASH=732367ed8a956038fd92c423e9208afa7285e91b561b0997132b8bd331acc0fc
 STAGE=
 DOWNLOAD=
 
@@ -106,6 +106,17 @@ start_service() (
     echo 'DDNS-Go 管理页面启动检查失败' >&2
     return 1
 )
+# 同一主程序可供新页面和旧 AliDDNS 入口使用；只暂停正在运行的兼容实例。
+compat_pause() {
+    ali_was_running=0
+    if [ -x "$ROOT/usr/bin/aliddns.sh" ] && [ "$(LEGACY_COMPAT_ROOT="$ROOT" "$ROOT/usr/bin/aliddns.sh" status 2>/dev/null)" = running ]; then
+        LEGACY_COMPAT_ROOT="$ROOT" "$ROOT/usr/bin/aliddns.sh" stop || return 1
+        ali_was_running=1
+    fi
+}
+compat_resume() {
+    [ "${ali_was_running:-0}" != 1 ] || LEGACY_COMPAT_ROOT="$ROOT" "$ROOT/usr/bin/aliddns.sh" start
+}
 install_package() {
     storage_ready
     available=$(df -Pk "$BASE" | awk 'END {print $4}')
@@ -114,10 +125,9 @@ install_package() {
     if [ -z "$archive" ]; then
         mkdir -p "$ROOT/tmp"
         DOWNLOAD=$(mktemp "$ROOT/tmp/ddns-go-download.XXXXXX")
-        url=https://github.com/jeessy2/ddns-go/releases/download/v$VERSION/ddns-go_${VERSION}_linux_mipsle_softfloat.tar.gz
-        if ! curl --noproxy '*' --proto '=https' --tlsv1.2 -fL --connect-timeout 12 --max-time 180 --max-filesize 5000000 "$url" -o "$DOWNLOAD"; then
-            curl --noproxy '*' --proto '=https' --tlsv1.2 -fL --connect-timeout 12 --max-time 180 --max-filesize 5000000 -H 'Accept: application/octet-stream' 'https://api.github.com/repos/jeessy2/ddns-go/releases/assets/544316471' -o "$DOWNLOAD" || fail '官方下载失败，可使用 install 加本地程序包路径'
-        fi
+        # 官方同版本源码以新版 Go 重编，修正 MIPS TLS 运行时对齐问题。
+        url=https://github.com/Lightn233/padavan/releases/download/legacy-compat-20261030/ddns-go_6.17.7_linux_mipsle_softfloat_padavan-go1.27.3.tar.gz
+        curl --noproxy '*' --proto '=https' --tlsv1.2 -fL --connect-timeout 12 --max-time 180 --max-filesize 6000000 "$url" -o "$DOWNLOAD" || fail '兼容包下载失败，可使用 install 加本地程序包路径'
         archive=$DOWNLOAD
     fi
     [ -f "$archive" ] || fail '程序包不存在'
@@ -128,11 +138,12 @@ install_package() {
     [ -f "$STAGE/ddns-go" ] && [ ! -L "$STAGE/ddns-go" ] || fail '程序包内容无效'
     [ "$(sha256sum "$STAGE/ddns-go" | awk '{print $1}')" = "$BINARY_HASH" ] || fail '主程序校验失败'
     chmod 755 "$STAGE/ddns-go"
-    [ "$(run_binary "$STAGE/ddns-go" -v)" = "v$VERSION" ] || fail '程序版本或目标架构不匹配'
+    [ "$(run_binary "$STAGE/ddns-go" -v)" = "v$VERSION" ] || fail '兼容程序版本或目标架构不匹配'
     if [ -f "$BIN" ]; then
         [ ! -e "$CONF" ] || cp -p "$CONF" "$BASE/config.previous"
         sha256sum "$BIN" | awk '{print $1}' > "$BASE/previous.sha256"
     fi
+    compat_pause || fail '旧 AliDDNS 实例未能停止，未替换程序'
     was_running=0
     if is_running; then was_running=1; stop_service; fi
     if [ -f "$BIN" ]; then
@@ -140,15 +151,18 @@ install_package() {
     fi
     mv "$STAGE/ddns-go" "$BIN"
     mv "$STAGE/LICENSE" "$BASE/LICENSE"
-    if [ "$was_running" = 1 ] && ! start_service; then
+    if ! { { [ "$was_running" != 1 ] || start_service; } && compat_resume; }; then
+        stop_service
+        if [ "$ali_was_running" = 1 ]; then LEGACY_COMPAT_ROOT="$ROOT" "$ROOT/usr/bin/aliddns.sh" stop || true; fi
         if [ -f "$BASE/ddns-go.previous" ]; then
             mv -f "$BASE/ddns-go.previous" "$BIN"
             [ ! -f "$BASE/config.previous" ] || cp -p "$BASE/config.previous" "$CONF"
-            start_service || true
+            [ "$was_running" != 1 ] || start_service || true
+            compat_resume || true
         fi
         fail '新程序启动失败，已尝试恢复上一版'
     fi
-    echo "DDNS-Go v$VERSION 安装完成，原 DDNS 账号和开关保持不变"
+    echo "DDNS-Go v$VERSION 兼容构建安装完成，原 DDNS 账号和开关保持不变"
 }
 rollback_package() {
     storage_ready
@@ -158,16 +172,20 @@ rollback_package() {
     run_binary "$previous" -v >/dev/null || fail '回退程序不能执行'
     STAGE=$(mktemp -d "$BASE/.install.XXXXXX")
     [ ! -f "$CONF" ] || cp -p "$CONF" "$STAGE/config.current"
+    compat_pause || fail '旧 AliDDNS 实例未能停止，未替换程序'
     was_running=0
     if is_running; then was_running=1; stop_service; fi
     mv "$BIN" "$STAGE/current"
     mv -f "$previous" "$BIN"
     [ ! -f "$BASE/config.previous" ] || cp -p "$BASE/config.previous" "$CONF"
-    if [ "$was_running" = 1 ] && ! start_service; then
+    if ! { { [ "$was_running" != 1 ] || start_service; } && compat_resume; }; then
+        stop_service
+        if [ "$ali_was_running" = 1 ]; then LEGACY_COMPAT_ROOT="$ROOT" "$ROOT/usr/bin/aliddns.sh" stop || true; fi
         mv -f "$BIN" "$previous"
         mv "$STAGE/current" "$BIN"
         [ ! -f "$STAGE/config.current" ] || cp -p "$STAGE/config.current" "$CONF"
-        start_service || true
+        [ "$was_running" != 1 ] || start_service || true
+        compat_resume || true
         fail '回退版本启动失败，已尝试恢复当前版本'
     fi
     rm -f "$BASE/previous.sha256"
@@ -191,5 +209,5 @@ case "${1:-status}" in
         if is_running; then echo running
         elif [ -x "$BIN" ]; then echo stopped
         else echo absent; fi;;
-    *) echo '用法：ddns-go.sh start|stop|restart|status|install [官方程序包路径]|rollback' >&2; exit 2;;
+    *) echo '用法：ddns-go.sh start|stop|restart|status|install [兼容程序包路径]|rollback' >&2; exit 2;;
 esac

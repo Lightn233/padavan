@@ -19,8 +19,18 @@ proxy_json_write() {
 		return 1
 	fi
 	case "$kind" in
-	xray|v2ray)
-		bin=$(find_bin "$kind")
+	ss)
+		local plugin
+		plugin=$(lua -e 'local c=require("cjson");local t=c.decode(io.read("*a"));print(t.plugin or "")' < "$tmp")
+		if [ "$plugin" = obfs-local ] && [ ! -x /usr/bin/obfs-local ]; then
+			log "此旧节点需要 simple-obfs 兼容插件，未安装时保留当前服务。"
+			rm -f "$tmp" "$error"; rmdir "$work"; return 1
+		fi
+		;;
+	xray|v2ray|trojan-xray)
+		local core_kind="$kind"
+		[ "$core_kind" != trojan-xray ] || core_kind=xray
+		bin=$(find_bin "$core_kind")
 		if [ ! -x "$bin" ]; then
 			log "找不到 $kind 程序，未更改流量接管。"
 			rm -f "$tmp" "$error"
@@ -53,13 +63,13 @@ proxy_run_core() {
 proxy_core_owned() {
 	local pid="$1"
 	[ -r "/proc/$pid/cmdline" ] || return 1
-	tr '\000' '\n' <"/proc/$pid/cmdline" | grep -qxE '/tmp/(v2-redir|v2-ssr-reudp|v2-ssr-local)\.json'
+	tr '\000' '\n' <"/proc/$pid/cmdline" | grep -qxE '/tmp/(v2-redir|v2-ssr-reudp|v2-ssr-local|tj-redir|trojan-ssr-reudp|trojan-ssr-local)\.json'
 }
 
 proxy_stop_cores() {
 	local pid n
 	# 只停止本服务配置启动的核心，保留用户独立运行的 Xray/V2Ray。
-	for pid in $(pidof v2ray 2>/dev/null; pidof xray 2>/dev/null); do
+	for pid in $(pidof v2ray 2>/dev/null; pidof xray 2>/dev/null; pidof trojan 2>/dev/null); do
 		case "$pid" in ''|*[!0-9]*) continue ;; esac
 		proxy_core_owned "$pid" || continue
 		kill -TERM "$pid" 2>/dev/null
@@ -74,7 +84,7 @@ proxy_stop_cores() {
 
 proxy_any_core_running() {
 	local pid
-	for pid in $(pidof v2ray 2>/dev/null; pidof xray 2>/dev/null); do
+	for pid in $(pidof v2ray 2>/dev/null; pidof xray 2>/dev/null; pidof trojan 2>/dev/null); do
 		case "$pid" in ''|*[!0-9]*) continue ;; esac
 		proxy_core_owned "$pid" && return 0
 	done
@@ -102,7 +112,7 @@ proxy_local_config() {
 	case "$type" in
 	xray) proxy_json_write xray /tmp/v2-ssr-local.json /etc_ro/ss/genxrayconfig.lua "$node" tcp 0 "$port" ;;
 	v2ray) proxy_json_write v2ray /tmp/v2-ssr-local.json /etc_ro/ss/genv2config.lua "$node" tcp 0 "$port" ;;
-	trojan) proxy_json_write trojan /tmp/trojan-ssr-local.json /etc_ro/ss/gentrojanconfig.lua "$node" client "$port" ;;
+	trojan) proxy_trojan_config "$node" socks "$port" /tmp/trojan-ssr-local.json ;;
 	ss|ssr) gen_config_file "$node" 3 "$port" ;;
 	*) return 0 ;;
 	esac
@@ -167,4 +177,41 @@ proxy_wait_listener() {
 	done
 	log "代理进程未按时监听 $proto/$port，未启用流量接管。"
 	return 1
+}
+
+proxy_trojan_config() {
+	local node="$1" role="$2" port="$3" target="$4" requested backend mode kind
+	requested=$(nvram get ss_trojan_backend)
+	[ -n "$requested" ] || requested=auto
+	backend=$(lua /etc_ro/ss/gentrojanconfig.lua "$node" select "$requested") || return 1
+	if [ "$backend" = xray ] && [ ! -x "$(find_bin xray)" ]; then
+		[ "$requested" = auto ] || { log "未安装 Xray，保留当前运行配置。"; return 1; }
+		backend=legacy
+	fi
+	if [ "$backend" = xray ]; then
+		mode=xray-$role; kind=trojan-xray
+	else
+		[ -x "$(find_bin trojan)" ] || { log "此节点需要 Trojan 兼容核心，但未安装。"; return 1; }
+		kind=trojan
+		case "$role" in tcp) mode=nat;; socks) mode=client;; udp) mode=client; port=10801;; *) return 1;; esac
+		log "Trojan 节点使用旧协议兼容核心，原证书设置保持不变。"
+	fi
+	proxy_json_write "$kind" "$target" /etc_ro/ss/gentrojanconfig.lua "$node" "$mode" "$port"
+}
+
+proxy_trojan_run() {
+	local config="$1" port="$2" proto="$3" backend bin
+	backend=$(lua -e 'local c=require("cjson");local t=c.decode(io.read("*a"));print(t.outbounds and "xray" or "trojan")' < "$config") || return 1
+	bin=$(find_bin "$backend")
+	[ -x "$bin" ] || return 1
+	if [ "$backend" = xray ]; then
+		proxy_run_core "$bin" "$config" "$port" "$proto"
+	else
+		run_bin "$bin" --config "$config"
+		if [ "$proto" = udp ]; then
+			proxy_wait_listener "$PROXY_RUN_PID" 10801 tcp || return 1
+			run_bin ipt2socks -U -b 0.0.0.0 -4 -s 127.0.0.1 -p 10801 -l "$port"
+		fi
+		proxy_wait_listener "$PROXY_RUN_PID" "$port" "$proto"
+	fi
 }

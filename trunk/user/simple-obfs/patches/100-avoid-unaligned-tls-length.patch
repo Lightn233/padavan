@@ -1,0 +1,23 @@
+--- a/src/obfs_tls.c
++++ b/src/obfs_tls.c
+@@ -224,7 +224,9 @@ obfs_app_data(buffer_t *buf, size_t cap, obfs_t *obfs)
+     memmove(buf->data + 5, buf->data, buf_len);
+     memcpy(buf->data, tls_data_header, 3);
+ 
+-    *(uint16_t*)(buf->data + 3) = CT_HTONS(buf_len);
++    /* 长度位于奇数偏移，逐字节写入以兼容 MIPS，保持网络字节序。 */
++    buf->data[3] = (unsigned char)(buf_len >> 8);
++    buf->data[4] = (unsigned char)buf_len;
+     buf->len = buf_len + 5;
+ 
+     return 0;
+@@ -253,7 +255,8 @@ deobfs_app_data(buffer_t *buf, size_t idx, obfs_t *obfs)
+             frame->idx++;
+             bidx++;
+             if (frame->idx == 5) {
+-                frame->len = CT_NTOHS(*(uint16_t *)(frame->buf));
++                frame->len = ((unsigned char)frame->buf[0] << 8)
++                           | (unsigned char)frame->buf[1];
+                 frame->idx = 0;
+             }
+             continue;

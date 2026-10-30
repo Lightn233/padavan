@@ -7,6 +7,14 @@ TOOLCHAIN    := mipsel-linux-musl
 
 all: build
 
+# 配置菜单只保存个人选择，编译仍由 make <机型> 启动。
+.PHONY: menuconfig config-show
+menuconfig:
+	@python3 scripts/build_config.py --menu "$(MODEL)"
+
+config-show:
+	@python3 scripts/build_config.py --show "$(MODEL)"
+
 build:
 	$(MAKE) -C $(TOPDIR)/toolchain download CT_TARGET=$(TOOLCHAIN)
 	@if [ ! -f $(CONFIG) ]; then \
@@ -27,7 +35,9 @@ clean:
 .PHONY: $(PRODUCTS)
 $(PRODUCTS):
 	@echo "Preparing product $@"
+	@python3 scripts/build_config.py --check-transition "$@"
 	cp -f $(TEMPLATE_DIR)/$(@).config $(CONFIG)
+	@echo 'CONFIG_BUILD_MODEL="$@"' >> $(CONFIG)
 	@echo "CONFIG_CROSS_COMPILER_ROOT=$(TOPDIR)/toolchain/toolchain-mipsel" >> $(CONFIG)
 	@echo "CONFIG_TOOLCHAIN=$(TOOLCHAIN)" >> $(CONFIG)
 	@echo "CONFIG_CCACHE=y" >> $(CONFIG)

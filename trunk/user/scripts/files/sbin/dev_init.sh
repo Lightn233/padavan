@@ -16,6 +16,25 @@ if [ "$1" != "-l" ] && [ "$ram_kib" -ge 262144 ]; then
     size_etc="16M"
 fi
 
+# 本地编译菜单可以指定上限；默认 0 沿用以上自动选择。
+# 按启动时实际可用内存检查，避免误选内存规格后给临时目录分配过大的额度。
+if [ "$1" != "-l" ] && [ -r /etc_ro/build-resources.conf ]; then
+    . /etc_ro/build-resources.conf
+    case "$TMPFS_TMP_MIB:$TMPFS_ETC_MIB" in
+        *[!0-9:]*|:*|*:) ;;
+        *)
+            custom_tmp=${TMPFS_TMP_MIB:-0}
+            custom_etc=${TMPFS_ETC_MIB:-0}
+            [ "$custom_tmp" -eq 0 ] && custom_tmp=${size_tmp%M}
+            [ "$custom_etc" -eq 0 ] && custom_etc=${size_etc%M}
+            if [ "$((custom_tmp + custom_etc))" -le "$((ram_kib / 2048))" ]; then
+                size_tmp="${custom_tmp}M"
+                size_etc="${custom_etc}M"
+            fi
+            ;;
+    esac
+fi
+
 if [ "$1" == "-l" ] ; then
 	size_tmp="8M"
 	size_var="1M"

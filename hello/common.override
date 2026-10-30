@@ -27,6 +27,8 @@ CONFIG_FIRMWARE_INCLUDE_DDNSTO=n
 ### ALDRIVER  ~3m
 CONFIG_FIRMWARE_INCLUDE_ALDRIVER=n
 
-# CPU 超频开关与频率（示例）Clock Rate: 1000Mhz=0x312 1100Mhz=0x362 1120Mhz=0x372 1200Mhz=0x3B2
-CONFIG_FIRMWARE_INCLUDE_OC=y
-CONFIG_FIRMWARE_MT7621_OC="0x362"
+# 公共版本默认不调整 CPU 时钟，沿用引导程序设置。
+# 运行 make menuconfig MODEL=RM2100 可单独选择本机超频和内存规格。
+# 频率参数只在主动开启超频后生效；详细说明见 docs/build-configuration.md。
+CONFIG_FIRMWARE_INCLUDE_OC=n
+CONFIG_FIRMWARE_MT7621_OC="0x312"

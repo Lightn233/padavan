@@ -19,6 +19,9 @@ __pycache__/
 /build.log
 /firmware.sha256
 
+# 按机型保存的个人编译选择，不发布到公共源码。
+/hello/local/
+
 # 编译生成的辅助程序与 MTD 工具由源码重新生成。
 /trunk/linux-4.4.x/drivers/net/wireless/mediatek/mt7615/embedded/tools/bin2h
 /trunk/user/busybox/busybox-1.38.0/scripts/basic/docproc

@@ -35,16 +35,21 @@ cd padavan
 make RM2100
 ```
 
+第一次编译也可以先运行 `make menuconfig`，或 `make menuconfig MODEL=RM2100` 打开指定机型的中文配置菜单。菜单包含用途说明、公共默认、CPU、内存规格、临时目录、常用插件和语言选择；保存后再执行 `make RM2100`。查看当前选择用 `make config-show MODEL=RM2100`。详见[新手配置说明](docs/build-configuration.md)。
+
+公共默认不超频，RM2100 板级 RAM 参数按原厂 128 MiB 设置。改装设备在菜单中选择实际容量；CPU 调频和内存资源配置按机型保存在本地，不会成为其他用户的默认值。
+
 先校验已有工具链；未安装时，Linux x86_64 默认从本仓库 Releases 下载固定摘要的预编译包并验证后安装。网络不便时可手动放入 `toolchain/downloads`。对应工具链源码输入、构建脚本和许可证也在同一仓库的 Release 中；需要从源码构建时执行 `make -C toolchain build SOURCE_JOBS=4`。详见 [工具链说明](toolchain/README.txt)，不需要另找作者的私人仓库。
 
 配置入口：
 
 - `trunk/configs/templates/RM2100.config`：RM2100 模板。
-- `hello/common.override`：现有公共覆盖项。当前保留维护者选择，包括 CPU 超频配置；换机型或用于未改装设备前应检查这些选项。
+- `hello/common.override`：公共覆盖项，默认关闭 CPU 超频。
+- `hello/local/<机型>.override`：菜单保存的个人选择，优先级最高并被 Git 忽略。
 - `scripts/apply_overrides.sh`：按机型应用覆盖项，保留原 `make <机型>` 方式。
 - `toolchain/source-inputs.json`：工具链源码、补丁来源和摘要。
 
-切换到另一机型前执行 `make clean`，再执行对应的 `make <机型名称>`。固件输出位于 `trunk/images/`。
+改变机型、CPU、内存规格、插件或语言开关且已有编译产物时，先执行 `make clean`，再执行对应的 `make <机型名称>`；入口会检查并提示，个人菜单选择不会被 clean 删除。固件输出位于 `trunk/images/`。
 
 选择需要源码编译的 Go 软件包时，还需安装符合对应包要求的 Go；本轮测试使用 Go 1.27.3。AdGuardHome 默认使用官方 MIPS little-endian softfloat 预编译包，保留程序包版本识别及校验，不能用任意改名的程序代替。
 

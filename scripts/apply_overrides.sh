@@ -19,6 +19,11 @@ inputs=("$config")
 if [ -f "$common_override" ]; then
   inputs+=("$common_override")
 fi
+# 个人选择最后应用，并只作用于同名机型。
+local_override="$root/hello/local/$product.override"
+if [ -f "$local_override" ]; then
+  inputs+=("$local_override")
+fi
 
 awk '
   function config_key(line, key) {
@@ -47,6 +52,9 @@ awk '
           (keys[i] != "" && last[keys[i]] == i)) print lines[i]
   }
 ' "${inputs[@]}" > "$tmp"
+
+# 无效的硬件参数在替换配置、下载工具链之前报错。
+python3 "$root/scripts/build_config.py" --validate-config "$product" "$tmp"
 
 # 内容未变时保留时间戳，避免触发无意义的增量重编译。
 if ! cmp -s -- "$config" "$tmp"; then

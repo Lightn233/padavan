@@ -6,6 +6,11 @@ BOARD_NUM_USB_PORTS=0
 
 include $(ROOTDIR)/user/board.mk
 
+# 按实际安装的内存选择编译期资源参数；不改内核的物理内存探测。
+ifneq ($(filter-out 0,$(strip $(CONFIG_FIRMWARE_RAM_SIZE))),)
+CONFIG_BOARD_RAM_SIZE=$(CONFIG_FIRMWARE_RAM_SIZE)
+endif
+
 ##################################################################
 
 ifneq ($(CONFIG_BOARD_RAM_SIZE),)

@@ -107,6 +107,10 @@ if [ ! -f "$board_mk" ] ; then
 	exit 1
 fi
 
+# 直接从 trunk 编译时也校验硬件选择，失败前不清理已有镜像。
+python3 "$ROOTDIR/../scripts/build_config.py" --validate-config \
+	"${CONFIG_BUILD_MODEL:-$CONFIG_FIRMWARE_PRODUCT_ID}" "$ROOTDIR/.config" || exit 1
+
 rm -rf $ROOTDIR/romfs
 rm -rf $ROOTDIR/images
 mkdir -p $ROOTDIR/romfs
@@ -151,10 +155,12 @@ if [ "$CONFIG_FIRMWARE_INCLUDE_SQM" = "y" ]; then
 	func_enable_kernel_param "CONFIG_NET_ACT_IPT" "m"
 	func_enable_kernel_param "CONFIG_IFB"
 fi
-#cpu超频
-if [ "$CONFIG_FIRMWARE_INCLUDE_OC" = "y" ]; then	
-	sed -i "/CONFIG_RALINK_MT7621=y/a\CONFIG_MT7621_OC=y" $kernel_tf
-	sed -i '/CONFIG_MT7621_OC=y/a\CONFIG_MT7621_CPU_FREQ="'$CONFIG_FIRMWARE_MT7621_OC'"' $kernel_tf
+# 明确写入唯一的 CPU 开关，关闭时不继承模板中的超频残留。
+sed -i '/^CONFIG_MT7621_OC=/d; /^# CONFIG_MT7621_OC is not set$/d; /^CONFIG_MT7621_CPU_FREQ=/d' "$kernel_tf"
+if [ "$CONFIG_FIRMWARE_INCLUDE_OC" = "y" ] && [ "$CONFIG_PRODUCT" = "MT7621" ]; then
+	printf '%s\n' 'CONFIG_MT7621_OC=y' "CONFIG_MT7621_CPU_FREQ=\"$CONFIG_FIRMWARE_MT7621_OC\"" >> "$kernel_tf"
+else
+	printf '%s\n' '# CONFIG_MT7621_OC is not set' >> "$kernel_tf"
 fi
 
 ############################# USB #####################################

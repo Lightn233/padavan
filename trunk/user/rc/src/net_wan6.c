@@ -31,6 +31,7 @@
 #include "rc.h"
 
 #if defined (USE_IPV6)
+#include "wan6_solicit.h"
 
 void build_dns6_var(void)
 {
@@ -382,6 +383,10 @@ void wan6_up(char *wan_ifname, int unit)
 			control_if_ipv6_radv(wan_ifname, 1);
 			/* wait for interface ready */
 			sleep(2);
+			/* IPv6CP 的地址先于 accept_ra=2 建立，补发 RS 可避免等周期通告。 */
+			if (allow_ra && !strncmp(wan_ifname, "ppp", 3) &&
+			    wan6_solicit_ppp(wan_ifname) < 0)
+				logmessage("IPv6", "Router solicitation on %s failed: %s", wan_ifname, strerror(errno));
 			start_dhcp6c(wan_ifname);
 		}
 	}

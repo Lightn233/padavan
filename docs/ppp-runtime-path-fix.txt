@@ -1,0 +1,37 @@
+PPP 2.5.4 与 Padavan 的默认运行路径修复
+
+问题
+Padavan 在 /tmp/ppp 下生成认证文件以及 ip-up、ip-down、ipv6-up、ipv6-down 回调。
+PPP 软件包使用全局的 /etc 配置目录时，PPPoE 可以认证并获得地址，但不会调用这些回调。
+表现包括管理页面 WAN 地址未更新、默认路由缺失、DNS 文件写入失败，以及后续 IPv6 服务没有正常启动。
+
+修复
+在 trunk/user/pppd/Makefile 的包级 configure 参数中加入 --sysconfdir=/tmp。
+不依靠 /etc/ppp 的临时符号链接，也不向启动命令额外传入回调路径。
+其他组件版本、用户 WAN 配置和 make RM2100 的机型选择方式均不改变。
+已有 PPP 构建目录需要先清理 PPP 包并重建，不能复用带旧路径的 pppd。
+
+回归测试
+tests/network/ppp_default_callbacks.py 在独立网络及挂载命名空间中运行 PPPoE 客户端和服务端。
+测试仅在隔离的 veth 接口之间通信，不把物理网卡加入实验环境。
+需要 Linux 虚拟机、root、Python 3.9 或更新、iproute2、util-linux、PPP 内核模块和原生 pppoe-server。
+本轮实际测试宿主为 Ubuntu 22.04，已安装的 PPP 提供 /etc/ppp、/usr/lib/pppd、/usr/sbin/pppd 挂载点。
+测试挂载只存在于隔离的挂载命名空间中，不替换虚拟机原有 PPP 程序。
+
+先使用项目同源 PPP 在独立目录原生构建：
+  configure --prefix=/usr --sysconfdir=/tmp --with-runtime-dir=/var/run --with-logfile-dir=/var/log --with-plugin-dir=/usr/lib/pppd
+再执行（将路径替换为自己的原生构建目录及 pppoe-server 路径）：
+  sudo python3 tests/network/ppp_default_callbacks.py --binary /path/to/native/pppd/pppd --pppoe-server /path/to/pppoe-server --lab-root /home/user/ppp-test-results --tag fixed
+
+源码、构建程序和结果目录均不能放在 /tmp，因为实验会在私有命名空间中覆盖 /tmp。
+旧版对照使用 --sysconfdir=/etc 编译，并添加 --expect-bug；应重现认证成功但默认回调、DNS 文件和默认路由检查失败。
+实验中的用户名和密码仅用于隔离测试，不是真实宽带账号。
+
+覆盖内容
+PAP 与 CHAP 认证、IPv4 与 IPv6CP 协商、双栈点对点连通、四种默认回调、回调环境变量、DNS 文件、默认路由、自动重拨和断开清理。
+实验不显式设置任何 *-script 参数，以免绕过本次实际故障。
+
+验证边界
+Ubuntu 修改前后对照通过；现有 MIPS 工具链构建通过；RM2100 U9D2 已实机完成刷入后自动拨号、默认路由、前缀委派、有线及 5 GHz 双栈 HTTPS 验证。
+该结果不代表其他机型、其他运营商或长期稳定性均已完成实机验收。
+本次无线搜网现象单独记录，未据此修改无线驱动，也未关闭 DFS。

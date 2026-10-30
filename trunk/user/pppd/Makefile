@@ -8,7 +8,9 @@ include $(INCLUDE_DIR)/package.mk
 
 SRC_DIR=./ppp-2.5.4
 CONFIGURE_PREFIX:=/usr
+# Padavan 在 /tmp/ppp 生成 WAN 回调和认证文件，必须同步 PPP 默认路径。
 CONFIGURE_ARGS += \
+	--sysconfdir=/tmp \
 	--with-runtime-dir=/var/run \
 	--with-logfile-dir=/var/log \
 	--with-plugin-dir=/usr/lib/pppd \
